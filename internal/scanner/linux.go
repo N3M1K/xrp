@@ -27,6 +27,10 @@ func (s *LinuxScanner) Scan() ([]Process, error) {
 	for _, line := range lines[1:] {
 		fields := strings.Fields(line)
 		if len(fields) >= 10 {
+			state := fields[3]
+			if state != "0A" { // 0A = TCP_LISTEN
+				continue
+			}
 			localAddr := fields[1]
 			parts := strings.Split(localAddr, ":")
 			if len(parts) == 2 {

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os/exec"
+	"runtime"
 
 	"github.com/N3M1K/xrp/internal/scanner"
 )
@@ -16,6 +18,20 @@ type CaddyConfig struct {
 
 type Apps struct {
 	HTTP HTTPApp `json:"http"`
+	TLS  *TLSApp `json:"tls,omitempty"`
+}
+
+type TLSApp struct {
+	Certificates Certificates `json:"certificates"`
+}
+
+type Certificates struct {
+	LoadFiles []LoadFile `json:"load_files"`
+}
+
+type LoadFile struct {
+	Certificate string `json:"certificate"`
+	Key         string `json:"key"`
 }
 
 type HTTPApp struct {
@@ -46,8 +62,13 @@ type Upstream struct {
 }
 
 // GenerateConfig creates a Caddy JSON configuration from a list of scanned processes.
-func GenerateConfig(processes []scanner.Process) CaddyConfig {
+func GenerateConfig(processes []scanner.Process, tld string, certFile string, keyFile string) CaddyConfig {
 	routes := []Route{}
+
+	cleanTld := tld
+	if cleanTld[0] == '.' {
+		cleanTld = cleanTld[1:]
+	}
 
 	for _, p := range processes {
 		if p.ProjectName == "" {
@@ -55,7 +76,7 @@ func GenerateConfig(processes []scanner.Process) CaddyConfig {
 		}
 
 		// Clean the hostname (basic cleaning for MVP)
-		host := fmt.Sprintf("%s.local", p.ProjectName)
+		host := fmt.Sprintf("%s.%s", p.ProjectName, cleanTld)
 
 		route := Route{
 			Match: []Match{
@@ -79,12 +100,25 @@ func GenerateConfig(processes []scanner.Process) CaddyConfig {
 			HTTP: HTTPApp{
 				Servers: map[string]Server{
 					"xrp_server": {
-						Listen: []string{":80"}, // Standard HTTP port for local domains
+						Listen: []string{":80", ":443"}, // Listen on HTTP and HTTPS
 						Routes: routes,
 					},
 				},
 			},
 		},
+	}
+
+	if certFile != "" && keyFile != "" {
+		config.Apps.TLS = &TLSApp{
+			Certificates: Certificates{
+				LoadFiles: []LoadFile{
+					{
+						Certificate: certFile,
+						Key:         keyFile,
+					},
+				},
+			},
+		}
 	}
 
 	return config
@@ -125,14 +159,31 @@ func RemoveRoute(port int) error {
 	return nil
 }
 
-// StartCaddy stubs starting the Caddy process.
+// StartCaddy actively starts the Caddy process in the background.
 func StartCaddy() error {
-	// MVP: Assume `caddy run` is running with API enabled by default.
+	_, err := exec.LookPath("caddy")
+	if err != nil {
+		if runtime.GOOS == "darwin" {
+			return fmt.Errorf("caddy not found. On macOS, you can install it via Homebrew: brew install caddy")
+		}
+		return fmt.Errorf("caddy not found in PATH")
+	}
+
+	// Check if already running via Admin API
+	resp, err := http.Get("http://localhost:2019/config/")
+	if err == nil && resp.StatusCode == 200 {
+		return nil // Already running
+	}
+
+	cmd := exec.Command("caddy", "start")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("caddy start failed (On linux, ensure CAP_NET_BIND_SERVICE is set for :80/:443): %w", err)
+	}
 	return nil
 }
 
-// StopCaddy stubs stopping the Caddy process.
+// StopCaddy gracefully stops the Caddy process.
 func StopCaddy() error {
-	// MVP: Assume user kills it.
-	return nil
+	cmd := exec.Command("caddy", "stop")
+	return cmd.Run()
 }

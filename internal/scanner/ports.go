@@ -13,12 +13,12 @@ var embeddedPorts embed.FS
 var knownPortsCache map[int]KnownPort
 
 // LoadKnownPorts loads port definitions from the given path or embedded file.
-func LoadKnownPorts(Path string) map[int]KnownPort {
+func LoadKnownPorts(path string) map[int]KnownPort {
 	var data []byte
 	var err error
 
-	if Path != "" {
-		data, err = os.ReadFile(Path)
+	if path != "" {
+		data, err = os.ReadFile(path)
 	} else {
 		data, err = embeddedPorts.ReadFile("known-ports.json")
 	}

@@ -33,7 +33,13 @@ func ScanProcesses() ([]Process, error) {
 		}
 
 		// Enrich Project Name if not already set or refined
-		p.ProjectName = getProjectName(p.CWD)
+		enrichedName := getProjectName(p.CWD)
+		if enrichedName != "" {
+			p.ProjectName = enrichedName
+		}
+
+		// Ensure the project name is always safely slugified for Caddy host matching
+		p.ProjectName = strings.ToLower(strings.ReplaceAll(p.ProjectName, " ", "-"))
 
 		processes = append(processes, p)
 	}

@@ -1,0 +1,73 @@
+{
+  "name": "xrp-vscode",
+  "displayName": "XRP Dashboard",
+  "description": "Companion extension for XRP local reverse proxy",
+  "version": "0.1.0",
+  "publisher": "xxdev",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "xrp-sidebar",
+          "title": "XRP",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "xrp-sidebar": [
+        {
+          "id": "xrp-services",
+          "name": "Local Services",
+          "icon": "resources/icon.svg"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "xrp.refresh",
+        "title": "Refresh XRP Services",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "xrp.open",
+        "title": "Open Local Domain in Browser",
+        "icon": "$(browser)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "xrp.refresh",
+          "when": "view == xrp-services",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "xrp.open",
+          "when": "view == xrp-services",
+          "group": "inline"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0",
+    "@types/node": "20.x",
+    "typescript": "^5.4.5"
+  }
+}

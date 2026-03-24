@@ -8,6 +8,7 @@ type Process struct {
 	ProjectName string
 	CWD         string
 	KnownApp    string
+	TunnelURL   string
 }
 
 // KnownPort represents metadata for a recognized port.

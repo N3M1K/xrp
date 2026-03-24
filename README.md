@@ -1,6 +1,6 @@
 # XRP - Local Environment Proxy
 
-XRP (Extensible Reverse Proxy) is a local development tool designed to automatically scan your system for running development servers and magically proxy them to `.local` domains.
+XRP (xxdev's Reverse Proxy) is a local development tool designed to automatically scan your system for running development servers and magically proxy them to `.local` domains.
 
 ## How it works
 
@@ -56,5 +56,17 @@ The user interfaces XRP using the `xrp` CLI tool (`cmd/xrp/main.go`). It:
 ## Usage
 Simply run the binary!
 ```bash
-go run ./cmd/xrp
+xrp start
+xrp tui
 ```
+
+## Requirements & Prerequisites
+- **Caddy**: High performance modern proxy under the hood (`brew install caddy` or `apt install caddy`).
+- **mkcert**: Zero-config local SSL generation (`brew install mkcert`).
+- **cloudflared**: Secure IPC tunnels (`brew install cloudflared`).
+
+> [!IMPORTANT]
+> **Linux Users (Port 80/443 Privileges)**: XRP dictates `caddy` to listen on ports 80 and 443. Linux heavily restricts these ports to `root` by default. You MUST run the following command once to safely grant Caddy permission to bind to these ports without needing sudo:
+> ```bash
+> sudo setcap cap_net_bind_service=+ep $(which caddy)
+> ```
