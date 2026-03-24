@@ -1,0 +1,142 @@
+{
+  "22": {
+    "name": "SSH",
+    "category": "devtools"
+  },
+  "80": {
+    "name": "HTTP",
+    "category": "web"
+  },
+  "443": {
+    "name": "HTTPS",
+    "category": "web"
+  },
+  "1433": {
+    "name": "SQL Server",
+    "category": "database"
+  },
+  "1521": {
+    "name": "Oracle DB",
+    "category": "database"
+  },
+  "3000": {
+    "name": "Next.js / Node.js",
+    "category": "devtools"
+  },
+  "3001": {
+    "name": "React / Alternate Web",
+    "category": "devtools"
+  },
+  "3306": {
+    "name": "MySQL / MariaDB",
+    "category": "database"
+  },
+  "4000": {
+    "name": "Hexo / Jekyll",
+    "category": "devtools"
+  },
+  "4200": {
+    "name": "Angular",
+    "category": "devtools"
+  },
+  "5000": {
+    "name": "Flask",
+    "category": "devtools"
+  },
+  "5173": {
+    "name": "Vite",
+    "category": "devtools"
+  },
+  "5432": {
+    "name": "PostgreSQL",
+    "category": "database"
+  },
+  "5984": {
+    "name": "CouchDB",
+    "category": "database"
+  },
+  "6379": {
+    "name": "Redis",
+    "category": "database"
+  },
+  "6767": {
+    "name": "Bazarr",
+    "category": "media"
+  },
+  "7878": {
+    "name": "Radarr",
+    "category": "media"
+  },
+  "8000": {
+    "name": "Django / Fastapi",
+    "category": "devtools"
+  },
+  "8080": {
+    "name": "Tomcat / Alternate HTTP",
+    "category": "web"
+  },
+  "8081": {
+    "name": "Expo / React Native",
+    "category": "devtools"
+  },
+  "8083": {
+    "name": "Calibre-Web",
+    "category": "selfhosted"
+  },
+  "8090": {
+    "name": "Nginx Proxy Manager",
+    "category": "selfhosted"
+  },
+  "8096": {
+    "name": "Jellyfin",
+    "category": "media"
+  },
+  "8123": {
+    "name": "Home Assistant",
+    "category": "selfhosted"
+  },
+  "8384": {
+    "name": "Syncthing",
+    "category": "selfhosted"
+  },
+  "8686": {
+    "name": "Lidarr",
+    "category": "media"
+  },
+  "8989": {
+    "name": "Sonarr",
+    "category": "media"
+  },
+  "9000": {
+    "name": "Portainer / SonarQube",
+    "category": "selfhosted"
+  },
+  "9042": {
+    "name": "Cassandra",
+    "category": "database"
+  },
+  "9090": {
+    "name": "Prometheus",
+    "category": "devtools"
+  },
+  "9200": {
+    "name": "Elasticsearch",
+    "category": "database"
+  },
+  "9443": {
+    "name": "Portainer (HTTPS)",
+    "category": "selfhosted"
+  },
+  "11211": {
+    "name": "Memcached",
+    "category": "database"
+  },
+  "27017": {
+    "name": "MongoDB",
+    "category": "database"
+  },
+  "32400": {
+    "name": "Plex",
+    "category": "media"
+  }
+}
