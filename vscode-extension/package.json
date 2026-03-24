@@ -3,7 +3,7 @@
   "displayName": "XRP Dashboard",
   "description": "Companion extension for XRP local reverse proxy",
   "version": "0.1.0",
-  "publisher": "xxdev",
+  "publisher": "n3m1k",
   "engines": {
     "vscode": "^1.90.0"
   },
