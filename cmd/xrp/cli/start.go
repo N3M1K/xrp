@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -8,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -30,12 +32,19 @@ var startCmd = &cobra.Command{
 			os.Remove(pidFile) // stale, smazat
 		}
 
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+
+		fmt.Println("Warming up XRP daemon environment...")
+		if err := runSpinnerUI(ctx); err != nil {
+			return fmt.Errorf("failed to provision prerequisites: %w", err)
+		}
+
 		exe, err := os.Executable()
 		if err != nil {
 			return err
 		}
 
-		fmt.Println("Starting XRP daemon...")
 		c := exec.Command(exe, "daemon")
 		if err := c.Start(); err != nil {
 			return fmt.Errorf("failed to start daemon: %w", err)

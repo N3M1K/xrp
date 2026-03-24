@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -66,7 +67,7 @@ func Run(cfg *config.Config) error {
 
 	// Provision required system dependencies cleanly and concurrently
 	logger.Printf("Ensuring pre-packed dependencies (Caddy, mkcert, cloudflared) orchestrations...")
-	if _, err := deps.EnsureAll(); err != nil {
+	if _, err := deps.EnsureAll(context.Background()); err != nil {
 		logger.Printf("Warning: partial dependency provisioning failures: %v", err)
 	}
 

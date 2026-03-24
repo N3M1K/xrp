@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -85,7 +86,7 @@ var cloudflaredURLs = map[string]map[string]string{
 
 // EnsureAll initiates concurrent fetching scaling and locally linking the required dependencies.
 // It will instantly yield cache results, preventing unnecessary HTTP requests.
-func EnsureAll() (ResolvedDeps, error) {
+func EnsureAll(ctx context.Context) (ResolvedDeps, error) {
 	var res ResolvedDeps
 	var wg sync.WaitGroup
 	var mu sync.Mutex
@@ -114,7 +115,7 @@ func EnsureAll() (ResolvedDeps, error) {
 			return
 		}
 
-		path, err := establishDependency(name, url)
+		path, err := establishDependency(ctx, name, url)
 
 		mu.Lock()
 		if err != nil && firstErr == nil {
@@ -134,7 +135,7 @@ func EnsureAll() (ResolvedDeps, error) {
 	return res, firstErr
 }
 
-func establishDependency(depName string, url string) (string, error) {
+func establishDependency(ctx context.Context, depName string, url string) (string, error) {
 	// 1. System-First: Lookup globally installed dependencies immediately
 	binNameWanted := depName
 	if runtime.GOOS == "windows" && !strings.HasSuffix(binNameWanted, ".exe") {
@@ -163,8 +164,13 @@ func establishDependency(depName string, url string) (string, error) {
 	}
 
 	// 3. Fallback: Initialize HTTP stream transfer and extraction
-	fmt.Printf("⬇️ Downloading %s locally...\n", depName)
-	resp, err := http.Get(url)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return "", err
+	}
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}
