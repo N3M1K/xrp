@@ -102,3 +102,7 @@ func (s *LinuxScanner) Scan() ([]Process, error) {
 
 	return processes, nil
 }
+
+func NewScanner() Scanner {
+	return &LinuxScanner{}
+}
