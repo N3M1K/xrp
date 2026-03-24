@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/N3M1K/xrp/internal/config"
+	"github.com/N3M1K/xrp/internal/deps"
 	"github.com/N3M1K/xrp/internal/proxy"
 	"github.com/N3M1K/xrp/internal/scanner"
 	"github.com/N3M1K/xrp/internal/socket"
@@ -62,6 +63,18 @@ func Run(cfg *config.Config) error {
 		return fmt.Errorf("could not write PID file: %w", err)
 	}
 	defer RemovePID()
+
+	// Provision required system dependencies cleanly and concurrently
+	logger.Printf("Ensuring pre-packed dependencies (Caddy, mkcert, cloudflared) orchestrations...")
+	if _, err := deps.EnsureAll(); err != nil {
+		logger.Printf("Warning: partial dependency provisioning failures: %v", err)
+	}
+
+	// Dynamically override PATH across child exec routines
+	if cacheDir, err := os.UserCacheDir(); err == nil {
+		xrpBinDir := filepath.Join(cacheDir, "xrp", "bin")
+		os.Setenv("PATH", xrpBinDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	}
 
 	// Ensure mkcert is ready
 	if err := ssl.CheckMkcert(); err != nil {

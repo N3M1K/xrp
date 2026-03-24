@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"runtime"
 
+	"github.com/N3M1K/xrp/internal/deps"
 	"github.com/N3M1K/xrp/internal/scanner"
 )
 
@@ -177,7 +178,8 @@ func StartCaddy() error {
 
 	cmd := exec.Command("caddy", "start")
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("caddy start failed (On linux, ensure CAP_NET_BIND_SERVICE is set for :80/:443): %w", err)
+		caddyPath, _ := exec.LookPath("caddy")
+		return deps.WrapCaddyError(caddyPath, fmt.Errorf("caddy start failed: %w", err))
 	}
 	return nil
 }
