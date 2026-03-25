@@ -22,3 +22,8 @@ Run `xrp start` in your terminal to start the daemon in the background before us
 2. Start the XRP Background Daemon (`xrp start`).
 3. Click the XRP Icon in VS Code Activity Bar.
 4. Click the "Open in Browser" button directly next to your active projects!
+
+
+## License
+
+This extension is licensed under the [GNU General Public License v3.0](LICENSE).
