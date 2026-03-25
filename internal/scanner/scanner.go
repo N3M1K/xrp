@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -43,6 +44,11 @@ func ScanProcesses() ([]Process, error) {
 
 		processes = append(processes, p)
 	}
+
+	// Always sort by Port descending for deterministic UI presentation
+	sort.SliceStable(processes, func(i, j int) bool {
+		return processes[i].Port > processes[j].Port
+	})
 
 	return processes, nil
 }
