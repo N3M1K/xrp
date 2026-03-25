@@ -3,8 +3,11 @@ package deps
 import (
 	"archive/tar"
 	"archive/zip"
+	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -42,45 +45,71 @@ func WrapCaddyError(path string, err error) error {
 	return err
 }
 
-// Config maps exactly what environments support our automated binary deployment footprint
+// Security checksum maps to aggressively combat supply chain risks.
+// Provide SHA256 hashes corresponding strictly to mapped OS/ARCH binaries.
+// Blank hashes skip explicit checks during development.
+var caddyChecksums = map[string]map[string]string{
+	"linux":   {"amd64": "", "arm64": ""},
+	"darwin":  {"amd64": "", "arm64": ""},
+	"windows": {"amd64": ""},
+}
+
+var mkcertChecksums = map[string]map[string]string{
+	"linux":   {"amd64": "", "arm64": ""},
+	"darwin":  {"amd64": "", "arm64": ""},
+	"windows": {"amd64": ""},
+}
+
+var cloudflaredChecksums = map[string]map[string]string{
+	"linux":   {"amd64": "", "arm64": ""},
+	"darwin":  {"amd64": ""},
+	"windows": {"amd64": ""},
+}
+
+const (
+	caddyVersion       = "2.9.1"
+	mkcertVersion      = "1.4.4"
+	cloudflaredVersion = "2024.12.0"
+)
+
 var caddyURLs = map[string]map[string]string{
 	"linux": {
-		"amd64": "https://github.com/caddyserver/caddy/releases/download/v2.7.6/caddy_2.7.6_linux_amd64.tar.gz",
-		"arm64": "https://github.com/caddyserver/caddy/releases/download/v2.7.6/caddy_2.7.6_linux_arm64.tar.gz",
+		"amd64": "https://github.com/caddyserver/caddy/releases/download/v" + caddyVersion + "/caddy_" + caddyVersion + "_linux_amd64.tar.gz",
+		"arm64": "https://github.com/caddyserver/caddy/releases/download/v" + caddyVersion + "/caddy_" + caddyVersion + "_linux_arm64.tar.gz",
 	},
 	"darwin": {
-		"amd64": "https://github.com/caddyserver/caddy/releases/download/v2.7.6/caddy_2.7.6_mac_amd64.tar.gz",
-		"arm64": "https://github.com/caddyserver/caddy/releases/download/v2.7.6/caddy_2.7.6_mac_arm64.tar.gz",
+		"amd64": "https://github.com/caddyserver/caddy/releases/download/v" + caddyVersion + "/caddy_" + caddyVersion + "_mac_amd64.tar.gz",
+		"arm64": "https://github.com/caddyserver/caddy/releases/download/v" + caddyVersion + "/caddy_" + caddyVersion + "_mac_arm64.tar.gz",
 	},
 	"windows": {
-		"amd64": "https://github.com/caddyserver/caddy/releases/download/v2.7.6/caddy_2.7.6_windows_amd64.zip",
+		"amd64": "https://github.com/caddyserver/caddy/releases/download/v" + caddyVersion + "/caddy_" + caddyVersion + "_windows_amd64.zip",
 	},
 }
 
 var mkcertURLs = map[string]map[string]string{
 	"linux": {
-		"amd64": "https://github.com/FiloSottile/mkcert/releases/download/v1.4.4/mkcert-v1.4.4-linux-amd64",
-		"arm64": "https://github.com/FiloSottile/mkcert/releases/download/v1.4.4/mkcert-v1.4.4-linux-arm64",
+		"amd64": "https://github.com/FiloSottile/mkcert/releases/download/v" + mkcertVersion + "/mkcert-v" + mkcertVersion + "-linux-amd64",
+		"arm64": "https://github.com/FiloSottile/mkcert/releases/download/v" + mkcertVersion + "/mkcert-v" + mkcertVersion + "-linux-arm64",
 	},
 	"darwin": {
-		"amd64": "https://github.com/FiloSottile/mkcert/releases/download/v1.4.4/mkcert-v1.4.4-darwin-amd64",
-		"arm64": "https://github.com/FiloSottile/mkcert/releases/download/v1.4.4/mkcert-v1.4.4-darwin-arm64",
+		"amd64": "https://github.com/FiloSottile/mkcert/releases/download/v" + mkcertVersion + "/mkcert-v" + mkcertVersion + "-darwin-amd64",
+		"arm64": "https://github.com/FiloSottile/mkcert/releases/download/v" + mkcertVersion + "/mkcert-v" + mkcertVersion + "-darwin-arm64",
 	},
 	"windows": {
-		"amd64": "https://github.com/FiloSottile/mkcert/releases/download/v1.4.4/mkcert-v1.4.4-windows-amd64.exe",
+		"amd64": "https://github.com/FiloSottile/mkcert/releases/download/v" + mkcertVersion + "/mkcert-v" + mkcertVersion + "-windows-amd64.exe",
 	},
 }
 
 var cloudflaredURLs = map[string]map[string]string{
 	"linux": {
-		"amd64": "https://github.com/cloudflare/cloudflared/releases/download/2024.3.0/cloudflared-linux-amd64",
-		"arm64": "https://github.com/cloudflare/cloudflared/releases/download/2024.3.0/cloudflared-linux-arm64",
+		"amd64": "https://github.com/cloudflare/cloudflared/releases/download/" + cloudflaredVersion + "/cloudflared-linux-amd64",
+		"arm64": "https://github.com/cloudflare/cloudflared/releases/download/" + cloudflaredVersion + "/cloudflared-linux-arm64",
 	},
 	"darwin": {
-		"amd64": "https://github.com/cloudflare/cloudflared/releases/download/2024.3.0/cloudflared-darwin-amd64.tgz",
+		"amd64": "https://github.com/cloudflare/cloudflared/releases/download/" + cloudflaredVersion + "/cloudflared-darwin-amd64.tgz",
 	},
 	"windows": {
-		"amd64": "https://github.com/cloudflare/cloudflared/releases/download/2024.3.0/cloudflared-windows-amd64.exe",
+		"amd64": "https://github.com/cloudflare/cloudflared/releases/download/" + cloudflaredVersion + "/cloudflared-windows-amd64.exe",
 	},
 }
 
@@ -180,12 +209,41 @@ func establishDependency(ctx context.Context, depName string, url string) (strin
 		return "", fmt.Errorf("HTTP %d rejected package acquisition for %s", resp.StatusCode, depName)
 	}
 
-	if strings.HasSuffix(url, ".zip") {
-		return extractZip(resp.Body, xrpBinDir, binNameWanted)
-	} else if strings.HasSuffix(url, ".tar.gz") || strings.HasSuffix(url, ".tgz") {
-		return extractTarGz(resp.Body, xrpBinDir, binNameWanted)
+	// Route payload to memory or temp storage for SHA256 stream analysis
+	var checksum string
+	switch depName {
+	case "caddy":
+		checksum = caddyChecksums[runtime.GOOS][runtime.GOARCH]
+	case "mkcert":
+		checksum = mkcertChecksums[runtime.GOOS][runtime.GOARCH]
+	case "cloudflared":
+		checksum = cloudflaredChecksums[runtime.GOOS][runtime.GOARCH]
 	}
-	return extractRaw(resp.Body, cachePath)
+
+	var streamReader io.Reader = resp.Body
+
+	if checksum != "" {
+		// Intercept the stream entirely into RAM / Temp to perform a non-destructive verification
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return "", err
+		}
+		hash := sha256.Sum256(bodyBytes)
+		computed := hex.EncodeToString(hash[:])
+		if computed != checksum {
+			return "", fmt.Errorf("CRITICAL: SHA256 checksum mismatch for %s. Expected %s, got %s", depName, checksum, computed)
+		}
+		
+		// Map the payload back into a consumable reader for the extractors
+		streamReader = bytes.NewReader(bodyBytes)
+	}
+
+	if strings.HasSuffix(url, ".zip") {
+		return extractZip(streamReader, xrpBinDir, binNameWanted)
+	} else if strings.HasSuffix(url, ".tar.gz") || strings.HasSuffix(url, ".tgz") {
+		return extractTarGz(streamReader, xrpBinDir, binNameWanted)
+	}
+	return extractRaw(streamReader, cachePath)
 }
 
 func extractZip(src io.Reader, destDir, binName string) (string, error) {
@@ -193,15 +251,18 @@ func extractZip(src io.Reader, destDir, binName string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer os.Remove(tmpFile.Name())
-	defer tmpFile.Close()
+	tmpPath := tmpFile.Name()
+	defer func() {
+		tmpFile.Close()
+		os.Remove(tmpPath)
+	}()
 
 	if _, err := io.Copy(tmpFile, src); err != nil {
 		return "", err
 	}
 	tmpFile.Close()
 
-	r, err := zip.OpenReader(tmpFile.Name())
+	r, err := zip.OpenReader(tmpPath)
 	if err != nil {
 		return "", err
 	}

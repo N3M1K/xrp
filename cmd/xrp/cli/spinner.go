@@ -64,7 +64,7 @@ func (m spinnerModel) View() string {
 	if m.quitting {
 		return "✅ Dependencies securely provisioned!\n"
 	}
-	return fmt.Sprintf("\n   %s Orchestrating core binary requirements (caddy, mkcert, cloudflared)...\n\n", m.spinner.View())
+	return fmt.Sprintf("\n   %s Downloading and caching binary dependencies...\n\n", m.spinner.View())
 }
 
 func runSpinnerUI(ctx context.Context) error {

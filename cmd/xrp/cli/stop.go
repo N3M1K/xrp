@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -20,7 +21,7 @@ var stopCmd = &cobra.Command{
 			return nil
 		}
 
-		pid, err := strconv.Atoi(string(data))
+		pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
 		if err != nil {
 			return fmt.Errorf("invalid PID in file: %w", err)
 		}

@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -20,11 +19,8 @@ var startCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pidFile := filepath.Join(os.TempDir(), "xrp.pid")
 		if pidBytes, err := os.ReadFile(pidFile); err == nil {
-			pid, _ := strconv.Atoi(strings.TrimSpace(string(pidBytes)))
-			if process, err := os.FindProcess(pid); err == nil {
-				// Na Windows FindProcess uspěje vždy, na Unix to kontroluje proces.
-				// Použijeme Signal(0) pro zjištění existence procesu:
-				if err := process.Signal(syscall.Signal(0)); err == nil {
+			if pid, err := strconv.Atoi(strings.TrimSpace(string(pidBytes))); err == nil {
+				if isProcessRunning(pid) {
 					fmt.Println("Daemon is already running.")
 					return nil
 				}

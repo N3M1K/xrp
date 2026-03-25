@@ -36,6 +36,26 @@ func (s *WindowsScanner) Scan() ([]Process, error) {
 		pidToCWD = make(map[int]string)
 	}
 
+	// Filtruj systémové procesy (vytaženo z loopu)
+	systemProcesses := map[string]bool{
+		"svchost": true, "lsass": true, "wininit": true,
+		"spoolsv": true, "services": true, "system": true,
+		"smss": true, "csrss": true, "winlogon": true,
+	}
+
+	// Filtruj specifický dev-noise background balast
+	skipProcesses := map[string]bool{
+		"antigravity":                 true,
+		"spotify":                     true,
+		"adobecollabsync":             true,
+		"tailscaled":                  true,
+		"riotclientservices":          true,
+		"language_server_windows_x64": true,
+		"plexscripthost":              true,
+		"plextunerservice":            true,
+		"joplin":                      true,
+	}
+
 	var processes []Process
 	for port, pid := range portToPID {
 		name := pidToName[pid]
@@ -43,12 +63,6 @@ func (s *WindowsScanner) Scan() ([]Process, error) {
 
 		nameLower := strings.ToLower(name)
 
-		// Filtruj systémové procesy
-		systemProcesses := map[string]bool{
-			"svchost": true, "lsass": true, "wininit": true,
-			"spoolsv": true, "services": true, "system": true,
-			"smss": true, "csrss": true, "winlogon": true,
-		}
 		if systemProcesses[nameLower] {
 			continue
 		}
@@ -58,19 +72,6 @@ func (s *WindowsScanner) Scan() ([]Process, error) {
 			continue
 		}
 
-		// Filtruj specifický dev-noise background balast
-		skipProcesses := map[string]bool{
-			"antigravity":                 true,
-			"spotify":                     true,
-			"adobecollabsync":             true,
-			"tailscaled":                  true,
-			"riotclientservices":          true,
-			"language_server_windows_x64": true,
-			"plexscripthost":              true,
-			"plextunerservice":            true,
-			"plextunерservice":            true, // cyrillic fallback z promptu
-			"joplin":                      true,
-		}
 		if skipProcesses[nameLower] {
 			if GetKnownApp(port) == "" {
 				continue
