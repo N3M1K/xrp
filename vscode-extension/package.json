@@ -4,6 +4,12 @@
   "description": "Companion extension for XRP local reverse proxy",
   "version": "0.1.0",
   "publisher": "n3m1k",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/n3m1k/xrp"
+  },
+  "license": "MIT",
+  "icon": "resources/icon.png",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -61,9 +67,9 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "vscode:prepublish": "bun run build",
+    "build": "bun build ./src/extension.ts --outfile=./out/extension.js --target=node --external=vscode",
+    "watch": "bun build ./src/extension.ts --outfile=./out/extension.js --target=node --external=vscode --watch"
   },
   "devDependencies": {
     "@types/vscode": "^1.90.0",
