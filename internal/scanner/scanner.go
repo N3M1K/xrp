@@ -147,8 +147,31 @@ func getProjectName(cwd string) string {
 
 	// 4. Fallback to base dir name
 	base := filepath.Base(cwd)
-	if base == "." || base == "/" {
+	if base == "." || base == "/" || base == string(filepath.Separator) {
 		return ""
 	}
+
+	// 5. Improve fallback: if the base dir is a common output directory (e.g., bin, build), use the parent dir
+	lowerBase := strings.ToLower(base)
+	commonOutDirs := map[string]bool{
+		"bin":     true,
+		"build":   true,
+		"dist":    true,
+		"out":     true,
+		"target":  true,
+		"release": true,
+		"debug":   true,
+	}
+
+	if commonOutDirs[lowerBase] {
+		parent := filepath.Dir(cwd)
+		if parent != "" && parent != "." && parent != "/" && parent != string(filepath.Separator) && parent != cwd {
+			parentBase := filepath.Base(parent)
+			if parentBase != "." && parentBase != "/" && parentBase != string(filepath.Separator) {
+				return parentBase
+			}
+		}
+	}
+
 	return base
 }
