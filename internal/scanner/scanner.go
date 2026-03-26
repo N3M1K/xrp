@@ -40,7 +40,10 @@ func ScanProcesses() ([]Process, error) {
 		}
 
 		// Ensure the project name is always safely slugified for Caddy host matching
-		p.ProjectName = strings.ToLower(strings.ReplaceAll(p.ProjectName, " ", "-"))
+		p.ProjectName = strings.ToLower(p.ProjectName)
+		p.ProjectName = strings.TrimLeft(p.ProjectName, ". ")
+		p.ProjectName = strings.ReplaceAll(p.ProjectName, " ", "-")
+		p.ProjectName = strings.ReplaceAll(p.ProjectName, ".", "-")
 
 		processes = append(processes, p)
 	}
