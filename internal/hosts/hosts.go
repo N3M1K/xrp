@@ -45,7 +45,11 @@ func SyncEntries(hostnames []string) error {
 		return fmt.Errorf("cannot read hosts file: %w", err)
 	}
 
-	lines := strings.Split(string(data), "\n")
+	// Normalise line endings: on Windows hosts file uses \r\n.
+	// We strip \r universally so marker matching works cross-platform.
+	normalised := strings.ReplaceAll(string(data), "\r\n", "\n")
+	normalised = strings.ReplaceAll(normalised, "\r", "\n")
+	lines := strings.Split(normalised, "\n")
 
 	// Build a set of desired hostnames
 	desired := make(map[string]bool)
@@ -53,13 +57,19 @@ func SyncEntries(hostnames []string) error {
 		desired[strings.ToLower(h)] = true
 	}
 
-	// Filter out old xrp-managed lines
+	// Filter out old xrp-managed lines and empty trailing lines
 	var kept []string
 	for _, line := range lines {
+		line = strings.TrimRight(line, "\r") // belt-and-suspenders trim
 		if strings.Contains(line, marker) {
 			continue // remove old xrp entries
 		}
 		kept = append(kept, line)
+	}
+
+	// Remove trailing empty lines to avoid bloat
+	for len(kept) > 0 && strings.TrimSpace(kept[len(kept)-1]) == "" {
+		kept = kept[:len(kept)-1]
 	}
 
 	// Add new entries
@@ -68,11 +78,8 @@ func SyncEntries(hostnames []string) error {
 		kept = append(kept, entry)
 	}
 
-	// Ensure file ends with newline
-	output := strings.Join(kept, "\n")
-	if !strings.HasSuffix(output, "\n") {
-		output += "\n"
-	}
+	// Ensure file ends with a single newline
+	output := strings.Join(kept, "\n") + "\n"
 
 	if err := os.WriteFile(path, []byte(output), 0644); err != nil {
 		return fmt.Errorf("cannot write hosts file (are you running as admin?): %w", err)
@@ -80,6 +87,7 @@ func SyncEntries(hostnames []string) error {
 
 	return nil
 }
+
 
 // RemoveAllEntries removes all xrp-managed entries from the hosts file.
 func RemoveAllEntries() error {

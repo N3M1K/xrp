@@ -10,7 +10,7 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the version number of XRP",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("XRP v0.5.7")
+		fmt.Println("XRP v0.5.10")
 	},
 }
 

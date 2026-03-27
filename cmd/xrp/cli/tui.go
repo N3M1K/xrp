@@ -16,7 +16,7 @@ var tuiCmd = &cobra.Command{
 			tld = cfg.TLD
 		}
 		cleanTld := strings.TrimPrefix(tld, ".")
-		return tui.Start(cleanTld)
+		return tui.Start(cleanTld, cfg)
 	},
 }
 

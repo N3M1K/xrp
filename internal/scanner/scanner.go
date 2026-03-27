@@ -33,6 +33,12 @@ func ScanProcesses() ([]Process, error) {
 			}
 		}
 
+		// Noise reduction: Prevent recursive proxy tables
+		nameLower := strings.ToLower(p.ProcessName)
+		if nameLower == "xrp" || nameLower == "xrp.exe" || nameLower == "xrp-daemon" || nameLower == "xrp-daemon.exe" {
+			continue
+		}
+
 		// Enrich Project Name if not already set or refined
 		enrichedName := getProjectName(p.CWD)
 		if enrichedName != "" {

@@ -9,8 +9,8 @@ import (
 
 // Send dials the socket, sends a Request and waits for Response
 func Send(req Request) (*Response, error) {
-	sockPath := GetSocketPath()
-	conn, err := net.Dial("unix", sockPath)
+	addr := GetSocketPath()
+	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("xrp daemon is not running")
 	}

@@ -30,17 +30,25 @@ type ResolvedDeps struct {
 type CaddyPermissionError struct {
 	Path string
 	Err  error
+	OS   string
 }
 
 func (e *CaddyPermissionError) Error() string {
+	if e.OS == "windows" {
+		return fmt.Sprintf("\n🛡️  Caddy requires Administrator privileges to seamlessly bind secure local proxy ports (80 and 443) dynamically.\n   Please relaunch XRP from an Administrator elevation locally to activate secure tunneling.\n   Original error: %v\n", e.Err)
+	}
 	return fmt.Sprintf("⚠️ Caddy needs permission to bind ports 80/443. Run:\nsudo setcap cap_net_bind_service=+ep %s\nOriginal error: %v", e.Path, e.Err)
 }
 
 func WrapCaddyError(path string, err error) error {
-	if runtime.GOOS == "linux" && err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "permission denied") || strings.Contains(strings.ToLower(err.Error()), "bind: permission denied") {
-			return &CaddyPermissionError{Path: path, Err: err}
-		}
+	if err == nil {
+		return nil
+	}
+	msg := strings.ToLower(err.Error())
+	if runtime.GOOS == "linux" && (strings.Contains(msg, "permission denied") || strings.Contains(msg, "bind: permission denied")) {
+		return &CaddyPermissionError{Path: path, Err: err, OS: "linux"}
+	} else if runtime.GOOS == "windows" && (strings.Contains(msg, "access is denied") || strings.Contains(msg, "permission denied") || strings.Contains(msg, "wsarecv") || strings.Contains(msg, "bind")) {
+		return &CaddyPermissionError{Path: path, Err: err, OS: "windows"}
 	}
 	return err
 }

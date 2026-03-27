@@ -5,12 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 
+	"github.com/N3M1K/xrp/internal/config"
 	"github.com/N3M1K/xrp/internal/deps"
 	"github.com/N3M1K/xrp/internal/scanner"
+	"github.com/N3M1K/xrp/internal/ssl"
 )
 
 // CaddyConfig represents the root of the Caddy JSON structure
@@ -41,8 +45,19 @@ type HTTPApp struct {
 }
 
 type Server struct {
-	Listen []string `json:"listen"`
-	Routes []Route  `json:"routes"`
+	Listen                []string              `json:"listen"`
+	Routes                []Route               `json:"routes"`
+	TLSConnectionPolicies []TLSConnectionPolicy `json:"tls_connection_policies,omitempty"`
+	AutoHTTPS             *AutoHTTPSConfig      `json:"automatic_https,omitempty"`
+}
+
+// TLSConnectionPolicy instructs Caddy which TLS config to use for incoming connections.
+// An empty policy (no fields set) matches all connections and uses any loaded certificate.
+type TLSConnectionPolicy struct{}
+
+// AutoHTTPSConfig controls Caddy's automatic HTTPS / ACME behaviour.
+type AutoHTTPSConfig struct {
+	Disable bool `json:"disable"`
 }
 
 type Route struct {
@@ -64,18 +79,19 @@ type Upstream struct {
 }
 
 // GenerateConfig creates a Caddy JSON configuration from a list of scanned processes.
-func GenerateConfig(processes []scanner.Process, tld string, certFile string, keyFile string, httpPort int, httpsPort int) CaddyConfig {
+func GenerateConfig(processes []scanner.Process, cfg *config.Config, certPairs []ssl.CertPair) CaddyConfig {
 	routes := []Route{}
-
-	cleanTld := tld
-	if cleanTld[0] == '.' {
-		cleanTld = cleanTld[1:]
-	}
 
 	for _, p := range processes {
 		if p.ProjectName == "" {
 			continue // Skip if no project name can be determined
 		}
+
+		tld := cfg.TLD
+		if customTld, ok := cfg.ProjectTLDs[p.ProjectName]; ok && customTld != "" {
+			tld = customTld
+		}
+		cleanTld := strings.TrimPrefix(tld, ".")
 
 		// Clean the hostname (basic cleaning for MVP)
 		host := fmt.Sprintf("%s.%s", p.ProjectName, cleanTld)
@@ -97,32 +113,51 @@ func GenerateConfig(processes []scanner.Process, tld string, certFile string, ke
 		routes = append(routes, route)
 	}
 
+	// Always disable Caddy's automatic HTTPS/ACME — we manage certs via mkcert.
+	// tls_connection_policies with an empty policy tells Caddy to use any
+	// locally-loaded certificate that matches the incoming SNI hostname.
+	// This is the correct approach for local dev / home lab: zero config for the user.
+	xrpServer := Server{
+		Listen: []string{
+			fmt.Sprintf(":%d", cfg.HTTPPort),
+			fmt.Sprintf(":%d", cfg.HTTPSPort),
+		},
+		Routes:    routes,
+		AutoHTTPS: &AutoHTTPSConfig{Disable: true},
+	}
+
+	if len(certPairs) > 0 {
+		// An empty TLSConnectionPolicy matches every connection and instructs
+		// Caddy to pick the best-matching cert from the load_files pool.
+		xrpServer.TLSConnectionPolicies = []TLSConnectionPolicy{{}}
+	}
+
 	config := CaddyConfig{
 		Apps: Apps{
 			HTTP: HTTPApp{
 				Servers: map[string]Server{
-					"xrp_server": {
-						Listen: []string{
-							fmt.Sprintf(":%d", httpPort),
-							fmt.Sprintf(":%d", httpsPort),
-						},
-						Routes: routes,
-					},
+					"xrp_server": xrpServer,
 				},
 			},
 		},
 	}
 
-	if certFile != "" && keyFile != "" {
-		config.Apps.TLS = &TLSApp{
-			Certificates: Certificates{
-				LoadFiles: []LoadFile{
-					{
-						Certificate: certFile,
-						Key:         keyFile,
-					},
+	if len(certPairs) > 0 {
+		var loadFiles []LoadFile
+		for _, pair := range certPairs {
+			if pair.Cert != "" && pair.Key != "" {
+				loadFiles = append(loadFiles, LoadFile{
+					Certificate: pair.Cert,
+					Key:         pair.Key,
+				})
+			}
+		}
+		if len(loadFiles) > 0 {
+			config.Apps.TLS = &TLSApp{
+				Certificates: Certificates{
+					LoadFiles: loadFiles,
 				},
-			},
+			}
 		}
 	}
 
@@ -183,13 +218,8 @@ func resolveCaddyBinary() (string, error) {
 	}
 
 	cachePath := filepath.Join(cacheDir, binName)
-	if _, err := exec.LookPath(cachePath); err == nil {
+	if stat, err := os.Stat(cachePath); err == nil && !stat.IsDir() && stat.Size() > 0 {
 		return cachePath, nil
-	}
-
-	// Try direct stat as a fallback
-	if fi, err2 := exec.LookPath(cachePath); err2 == nil {
-		return fi, nil
 	}
 
 	return "", fmt.Errorf("caddy not found in PATH or deps cache (%s)", cacheDir)
@@ -212,8 +242,14 @@ func StartCaddy() error {
 	}
 
 	cmd := exec.Command(caddyPath, "start")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return deps.WrapCaddyError(caddyPath, fmt.Errorf("caddy start failed: %w", err))
+		errMsg := stderr.String()
+		if errMsg == "" {
+			errMsg = err.Error()
+		}
+		return deps.WrapCaddyError(caddyPath, fmt.Errorf("caddy start failed: %s", errMsg))
 	}
 	return nil
 }

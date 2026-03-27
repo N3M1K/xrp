@@ -116,16 +116,20 @@ func printDashboard(processes []scanner.Process) {
 	
 	// Print actionable URLs
 	fmt.Println("\nAvailable URLs:")
-	tld := ".local"
-	if cfg != nil && cfg.TLD != "" {
-		tld = cfg.TLD
-	}
-
-	cleanTld := strings.TrimPrefix(tld, ".")
-
 	for _, p := range processes {
 		var url string
 		if p.ProjectName != "" {
+			tld := ".local"
+			if cfg != nil && cfg.TLD != "" {
+				tld = cfg.TLD
+			}
+			if cfg != nil && cfg.ProjectTLDs != nil {
+				if custom, ok := cfg.ProjectTLDs[p.ProjectName]; ok && custom != "" {
+					tld = custom
+				}
+			}
+			
+			cleanTld := strings.TrimPrefix(tld, ".")
 			url = fmt.Sprintf("https://%s.%s", p.ProjectName, cleanTld)
 		} else {
 			url = fmt.Sprintf("http://localhost:%d", p.Port)

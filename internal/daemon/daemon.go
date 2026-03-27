@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -60,7 +61,7 @@ func Run(cfg *config.Config) error {
 
 	logger := log.New(logFile, "[daemon] ", log.LstdFlags)
 	logger.Printf("Starting XRP daemon...")
-	logger.Printf("Admin mode: %v, HTTP port: %d, HTTPS port: %d", config.IsAdmin(), cfg.HTTPPort, cfg.HTTPSPort)
+	logger.Printf("HTTP port: %d, HTTPS port: %d", cfg.HTTPPort, cfg.HTTPSPort)
 
 	if err := WritePID(); err != nil {
 		return fmt.Errorf("could not write PID file: %w", err)
@@ -80,29 +81,38 @@ func Run(cfg *config.Config) error {
 	}
 
 	// Ensure mkcert is ready
+	var certPairs []ssl.CertPair
 	if err := ssl.CheckMkcert(); err != nil {
 		logger.Printf("Warning: mkcert not found, SSL might not work. Please install it.")
 	} else {
-		logger.Printf("Generating/Verifying mkcert certificates for *.%s", cfg.TLD)
+		logger.Printf("Generating/Verifying mkcert certificates for all configured TLDs")
 		if err := ssl.InstallTrustStore(); err != nil {
 			logger.Printf("Failed to install mkcert trust store: %v", err)
 		}
+		pairs, err := ssl.GenerateAllCerts(cfg)
+		if err != nil {
+			logger.Printf("Warning: partial cert generation failure: %v", err)
+		}
+		certPairs = pairs
 	}
 
-	certPath, keyPath, err := ssl.GenerateCert(cfg.TLD)
-	if err != nil {
-		logger.Printf("Failed to generate certificates: %v", err)
-	}
-
-	// Ensure Caddy starts
-	if err := proxy.StartCaddy(); err != nil {
-		logger.Printf("Failed to start Caddy: %v", err)
-	}
-
-	// Check hosts file writability
+	// Check hosts file writability (this also serves as the admin/elevation check
+	// since writing the hosts file on Windows requires Administrator privileges)
 	hostsWritable := hosts.IsWritable()
 	if !hostsWritable {
-		logger.Printf("WARNING: Hosts file is not writable. Domains will not resolve in the browser. Run as admin or manually add entries to the hosts file.")
+		if runtime.GOOS == "windows" {
+			logger.Printf("WARNING: XRP is not running as Administrator.")
+			logger.Printf("WARNING: Caddy CANNOT bind to ports 80/443 and domains will not resolve.")
+			logger.Printf("WARNING: Please restart XRP from an elevated (Administrator) terminal.")
+		} else {
+			logger.Printf("WARNING: Hosts file is not writable. Domains will not resolve in the browser.")
+			logger.Printf("WARNING: Caddy may also fail to bind ports 80/443. Try: sudo setcap cap_net_bind_service=+ep $(which caddy)")
+		}
+	}
+
+	// Ensure Caddy starts (must happen AFTER hosts writability check so we have the hostsWritable flag)
+	if err := proxy.StartCaddy(); err != nil {
+		logger.Printf("Failed to start Caddy: %v", err)
 	}
 
 	// Start socket server for IPC (CLI & VSCode)
@@ -139,6 +149,18 @@ func Run(cfg *config.Config) error {
 			return nil
 
 		case <-ticker.C:
+			// Reload config on every tick to pick up TLD changes from CLI/TUI
+			if freshCfg, err := config.LoadConfig(); err == nil {
+				cfg = freshCfg
+				// Always regenerate cert list — GenerateAllCerts skips existing valid certs
+				// but MUST return them so certPairs stays populated for Caddy.
+				// Bug fix: the old `&& len(pairs) > 0` guard caused certPairs to be
+				// cleared when all certs already existed (pairs returned, no new generated).
+				if pairs, err := ssl.GenerateAllCerts(cfg); err == nil {
+					certPairs = pairs
+				}
+			}
+
 			processes, err := scanner.ScanProcesses()
 			if err != nil {
 				logger.Printf("Error scanning processes: %v", err)
@@ -162,10 +184,14 @@ func Run(cfg *config.Config) error {
 
 			// Build hostnames list and sync hosts file
 			if hostsWritable {
-				cleanTld := strings.TrimPrefix(cfg.TLD, ".")
 				var hostnames []string
 				for _, p := range processes {
 					if p.ProjectName != "" {
+						tld := cfg.TLD
+						if custom, ok := cfg.ProjectTLDs[p.ProjectName]; ok && custom != "" {
+							tld = custom
+						}
+						cleanTld := strings.TrimPrefix(tld, ".")
 						hostnames = append(hostnames, fmt.Sprintf("%s.%s", p.ProjectName, cleanTld))
 					}
 				}
@@ -175,7 +201,7 @@ func Run(cfg *config.Config) error {
 			}
 
 			// Generate and Apply Caddy config
-			caddyConfig := proxy.GenerateConfig(processes, cfg.TLD, certPath, keyPath, cfg.HTTPPort, cfg.HTTPSPort)
+			caddyConfig := proxy.GenerateConfig(processes, cfg, certPairs)
 			if err := proxy.ApplyConfig(caddyConfig); err != nil {
 				logger.Printf("Failed to apply proxy configuration: %v", err)
 			}

@@ -17,13 +17,13 @@ export interface Response {
   error?: string;
 }
 
-function getSocketPath(): string {
-  return path.join(os.tmpdir(), "xrp.sock");
+function getSocketPort(): number {
+  return 40192;
 }
 
 export async function sendCommand(cmd: string, args?: Record<string, string>): Promise<Response> {
   return new Promise((resolve, reject) => {
-    const client = net.createConnection({ path: getSocketPath() });
+    const client = net.createConnection({ port: getSocketPort(), host: '127.0.0.1' });
 
     client.on('connect', () => {
       client.write(JSON.stringify({ cmd, args }) + '\n');

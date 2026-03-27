@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"sync"
@@ -31,22 +29,20 @@ func UpdateProcesses(processes []scanner.Process) {
 	cachedProcesses = make([]scanner.Process, len(processes))
 	copy(cachedProcesses, processes)
 }
-
+// TCP: required for Tauri (Rust) GUI compatibility on Windows
 func GetSocketPath() string {
-	return filepath.Join(os.TempDir(), "xrp.sock")
+	return "127.0.0.1:40192"
 }
 
 func StartServer(logger *log.Logger) error {
-	sockPath := GetSocketPath()
-	os.Remove(sockPath)
+	addr := GetSocketPath()
 
-	listener, err := net.Listen("unix", sockPath)
+	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		return fmt.Errorf("could not listen on unix socket: %w", err)
+		return fmt.Errorf("could not listen on tcp socket: %w", err)
 	}
-	defer os.Remove(sockPath)
 
-	logger.Printf("Socket server listening on %s", sockPath)
+	logger.Printf("Socket tcp server listening on %s", addr)
 
 	for {
 		conn, err := listener.Accept()
