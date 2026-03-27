@@ -45,6 +45,15 @@ func WrapCaddyError(path string, err error) error {
 	return err
 }
 
+// GetBinDir returns the path to the XRP local binary cache directory.
+func GetBinDir() (string, error) {
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(cacheDir, "xrp", "bin"), nil
+}
+
 // Security checksum maps to aggressively combat supply chain risks.
 // Provide SHA256 hashes corresponding strictly to mapped OS/ARCH binaries.
 // Blank hashes skip explicit checks during development.

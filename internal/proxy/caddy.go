@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 
 	"github.com/N3M1K/xrp/internal/deps"
@@ -63,7 +64,7 @@ type Upstream struct {
 }
 
 // GenerateConfig creates a Caddy JSON configuration from a list of scanned processes.
-func GenerateConfig(processes []scanner.Process, tld string, certFile string, keyFile string) CaddyConfig {
+func GenerateConfig(processes []scanner.Process, tld string, certFile string, keyFile string, httpPort int, httpsPort int) CaddyConfig {
 	routes := []Route{}
 
 	cleanTld := tld
@@ -101,7 +102,10 @@ func GenerateConfig(processes []scanner.Process, tld string, certFile string, ke
 			HTTP: HTTPApp{
 				Servers: map[string]Server{
 					"xrp_server": {
-						Listen: []string{":80", ":443"}, // Listen on HTTP and HTTPS
+						Listen: []string{
+							fmt.Sprintf(":%d", httpPort),
+							fmt.Sprintf(":%d", httpsPort),
+						},
 						Routes: routes,
 					},
 				},
@@ -160,14 +164,45 @@ func RemoveRoute(port int) error {
 	return nil
 }
 
+// resolveCaddyBinary finds the caddy binary either from PATH or from the deps cache.
+func resolveCaddyBinary() (string, error) {
+	// 1. Try PATH first
+	if sysPath, err := exec.LookPath("caddy"); err == nil {
+		return sysPath, nil
+	}
+
+	// 2. Try the deps cache directory
+	binName := "caddy"
+	if runtime.GOOS == "windows" {
+		binName = "caddy.exe"
+	}
+
+	cacheDir, err := deps.GetBinDir()
+	if err != nil {
+		return "", fmt.Errorf("caddy not found in PATH and cannot locate deps cache: %w", err)
+	}
+
+	cachePath := filepath.Join(cacheDir, binName)
+	if _, err := exec.LookPath(cachePath); err == nil {
+		return cachePath, nil
+	}
+
+	// Try direct stat as a fallback
+	if fi, err2 := exec.LookPath(cachePath); err2 == nil {
+		return fi, nil
+	}
+
+	return "", fmt.Errorf("caddy not found in PATH or deps cache (%s)", cacheDir)
+}
+
 // StartCaddy actively starts the Caddy process in the background.
 func StartCaddy() error {
-	_, err := exec.LookPath("caddy")
+	caddyPath, err := resolveCaddyBinary()
 	if err != nil {
 		if runtime.GOOS == "darwin" {
 			return fmt.Errorf("caddy not found. On macOS, you can install it via Homebrew: brew install caddy")
 		}
-		return fmt.Errorf("caddy not found in PATH")
+		return err
 	}
 
 	// Check if already running via Admin API
@@ -176,9 +211,8 @@ func StartCaddy() error {
 		return nil // Already running
 	}
 
-	cmd := exec.Command("caddy", "start")
+	cmd := exec.Command(caddyPath, "start")
 	if err := cmd.Run(); err != nil {
-		caddyPath, _ := exec.LookPath("caddy")
 		return deps.WrapCaddyError(caddyPath, fmt.Errorf("caddy start failed: %w", err))
 	}
 	return nil
@@ -186,6 +220,10 @@ func StartCaddy() error {
 
 // StopCaddy gracefully stops the Caddy process.
 func StopCaddy() error {
-	cmd := exec.Command("caddy", "stop")
+	caddyPath, err := resolveCaddyBinary()
+	if err != nil {
+		return nil // If we can't find caddy, nothing to stop
+	}
+	cmd := exec.Command(caddyPath, "stop")
 	return cmd.Run()
 }

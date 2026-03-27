@@ -7,11 +7,12 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"syscall"
+	"strings"
 	"time"
 
 	"github.com/N3M1K/xrp/internal/config"
 	"github.com/N3M1K/xrp/internal/deps"
+	"github.com/N3M1K/xrp/internal/hosts"
 	"github.com/N3M1K/xrp/internal/proxy"
 	"github.com/N3M1K/xrp/internal/scanner"
 	"github.com/N3M1K/xrp/internal/socket"
@@ -35,11 +36,11 @@ func RemovePID() {
 }
 
 func getLogFilePath() (string, error) {
-	homeDir, err := os.UserHomeDir()
+	cacheDir, err := os.UserCacheDir()
 	if err != nil {
 		return "", err
 	}
-	logDir := filepath.Join(homeDir, ".local", "share", "xrp")
+	logDir := filepath.Join(cacheDir, "xrp")
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		return "", err
 	}
@@ -59,6 +60,7 @@ func Run(cfg *config.Config) error {
 
 	logger := log.New(logFile, "[daemon] ", log.LstdFlags)
 	logger.Printf("Starting XRP daemon...")
+	logger.Printf("Admin mode: %v, HTTP port: %d, HTTPS port: %d", config.IsAdmin(), cfg.HTTPPort, cfg.HTTPSPort)
 
 	if err := WritePID(); err != nil {
 		return fmt.Errorf("could not write PID file: %w", err)
@@ -92,9 +94,15 @@ func Run(cfg *config.Config) error {
 		logger.Printf("Failed to generate certificates: %v", err)
 	}
 
-	// Ensure Caddy starts (stubbed for now in proxy module)
+	// Ensure Caddy starts
 	if err := proxy.StartCaddy(); err != nil {
 		logger.Printf("Failed to start Caddy: %v", err)
+	}
+
+	// Check hosts file writability
+	hostsWritable := hosts.IsWritable()
+	if !hostsWritable {
+		logger.Printf("WARNING: Hosts file is not writable. Domains will not resolve in the browser. Run as admin or manually add entries to the hosts file.")
 	}
 
 	// Start socket server for IPC (CLI & VSCode)
@@ -107,25 +115,25 @@ func Run(cfg *config.Config) error {
 	ticker := time.NewTicker(time.Duration(cfg.PollInterval) * time.Second)
 	defer ticker.Stop()
 	defer tunnel.StopAll()
+	defer func() {
+		// Clean up hosts entries on shutdown
+		if hostsWritable {
+			if err := hosts.RemoveAllEntries(); err != nil {
+				logger.Printf("Failed to clean up hosts entries: %v", err)
+			} else {
+				logger.Printf("Cleaned up hosts file entries")
+			}
+		}
+	}()
 
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	signal.Notify(sigChan, os.Interrupt)
 
 	logger.Printf("Daemon running, scanning every %d seconds", cfg.PollInterval)
 
 	for {
 		select {
 		case sig := <-sigChan:
-			if sig == syscall.SIGHUP {
-				logger.Printf("Received SIGHUP, reloading configuration...")
-				if newCfg, err := config.LoadConfig(); err == nil {
-					*cfg = *newCfg
-				} else {
-					logger.Printf("Failed to reload config: %v", err)
-				}
-				continue
-			}
-
 			logger.Printf("Received signal %s, shutting down...", sig.String())
 			proxy.StopCaddy()
 			return nil
@@ -152,8 +160,22 @@ func Run(cfg *config.Config) error {
 			// Share with socket clients
 			socket.UpdateProcesses(processes)
 
+			// Build hostnames list and sync hosts file
+			if hostsWritable {
+				cleanTld := strings.TrimPrefix(cfg.TLD, ".")
+				var hostnames []string
+				for _, p := range processes {
+					if p.ProjectName != "" {
+						hostnames = append(hostnames, fmt.Sprintf("%s.%s", p.ProjectName, cleanTld))
+					}
+				}
+				if err := hosts.SyncEntries(hostnames); err != nil {
+					logger.Printf("Failed to sync hosts file: %v", err)
+				}
+			}
+
 			// Generate and Apply Caddy config
-			caddyConfig := proxy.GenerateConfig(processes, cfg.TLD, certPath, keyPath)
+			caddyConfig := proxy.GenerateConfig(processes, cfg.TLD, certPath, keyPath, cfg.HTTPPort, cfg.HTTPSPort)
 			if err := proxy.ApplyConfig(caddyConfig); err != nil {
 				logger.Printf("Failed to apply proxy configuration: %v", err)
 			}

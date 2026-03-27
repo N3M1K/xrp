@@ -23,13 +23,24 @@ func InstallTrustStore() error {
 	return cmd.Run()
 }
 
+func getCertsDir() (string, error) {
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return "", err
+	}
+	certsDir := filepath.Join(cacheDir, "xrp", "certs")
+	if err := os.MkdirAll(certsDir, 0755); err != nil {
+		return "", err
+	}
+	return certsDir, nil
+}
+
 func GetCertPaths(tld string) (certPath string, keyPath string, err error) {
-	homeDir, err := os.UserHomeDir()
+	certsDir, err := getCertsDir()
 	if err != nil {
 		return "", "", err
 	}
-	certsDir := filepath.Join(homeDir, ".local", "share", "xrp", "certs")
-	
+
 	cleanTld := strings.TrimPrefix(tld, ".")
 	certFile := filepath.Join(certsDir, fmt.Sprintf("_wildcard.%s.pem", cleanTld))
 	keyFile := filepath.Join(certsDir, fmt.Sprintf("_wildcard.%s-key.pem", cleanTld))
@@ -38,18 +49,15 @@ func GetCertPaths(tld string) (certPath string, keyPath string, err error) {
 }
 
 func GenerateCert(tld string) (certPath string, keyPath string, err error) {
-	homeDir, err := os.UserHomeDir()
+	certsDir, err := getCertsDir()
 	if err != nil {
-		return "", "", err
-	}
-	certsDir := filepath.Join(homeDir, ".local", "share", "xrp", "certs")
-	if err := os.MkdirAll(certsDir, 0755); err != nil {
 		return "", "", err
 	}
 
 	cleanTld := strings.TrimPrefix(tld, ".")
 	wildcard := fmt.Sprintf("*.%s", cleanTld)
-	certFile, keyFile, _ := GetCertPaths(tld)
+	certFile := filepath.Join(certsDir, fmt.Sprintf("_wildcard.%s.pem", cleanTld))
+	keyFile := filepath.Join(certsDir, fmt.Sprintf("_wildcard.%s-key.pem", cleanTld))
 
 	// Check if certificates already exist
 	if _, err := os.Stat(certFile); err == nil {
