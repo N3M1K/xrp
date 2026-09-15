@@ -90,7 +90,7 @@ halo set-tld jellyfin media
 4. Press `Enter` to confirm
 
 Changes take effect within the next poll cycle (~5 seconds) — the daemon automatically:
-- Generates a new wildcard mkcert certificate for the new TLD
+- Issues a certificate covering the new hostname (per-host SANs, regenerated when the host set changes)
 - Updates the hosts file with the new hostname
 - Reloads the Caddy configuration
 
@@ -119,8 +119,13 @@ Config file: `~/.config/halo/config.toml`
 | `log_level` | `info` | Log verbosity |
 
 > **Note:** Binding ports 80 and 443 requires elevated privileges.
-> - **Windows**: Run terminal as Administrator
-> - **Linux**: Run `sudo setcap cap_net_bind_service=+ep $(which caddy)` once
+> - **Linux**: `halo start` offers to run the one-time
+>   `sudo setcap cap_net_bind_service=+ep ~/.cache/halo/bin/caddy` for you.
+> - **Windows**: Run the terminal as Administrator.
+> - **macOS**: Run with `sudo`, or set `http_port`/`https_port` to high ports (e.g. 8080/8443).
+>
+> If you'd rather not elevate at all, set `http_port = 8080` and `https_port = 8443`
+> in the config and use `https://<project>.localhost:8443`.
 
 ---
 

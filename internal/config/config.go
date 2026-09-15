@@ -20,9 +20,14 @@ type Config struct {
 	KnownPortsPath string            `mapstructure:"known_ports_path"`
 }
 
+// NormalizeTLD lowercases a TLD and strips any leading dot.
+func NormalizeTLD(tld string) string {
+	return strings.TrimPrefix(strings.ToLower(strings.TrimSpace(tld)), ".")
+}
+
 func SetProjectTLD(projectName, tld string) error {
 	projectName = strings.TrimSpace(projectName)
-	tld = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(tld)), ".")
+	tld = NormalizeTLD(tld)
 	if projectName == "" {
 		return fmt.Errorf("project name must not be empty")
 	}
@@ -51,7 +56,7 @@ func (c *Config) EffectiveTLD(projectName string) string {
 	if custom, ok := c.ProjectTLDs[projectName]; ok && custom != "" {
 		tld = custom
 	}
-	tld = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(tld)), ".")
+	tld = NormalizeTLD(tld)
 	if tld == "" {
 		tld = "localhost"
 	}

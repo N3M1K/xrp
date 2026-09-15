@@ -2,6 +2,8 @@ package cli
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/N3M1K/halo-proxy/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -17,8 +19,13 @@ var setTldCmd = &cobra.Command{
 		if err := config.SetProjectTLD(project, tld); err != nil {
 			return fmt.Errorf("failed to save custom TLD: %w", err)
 		}
-		fmt.Printf("✅ Project '%s' has been successfully bound to custom domain *.%s\n", project, tld)
-		fmt.Printf("⚠️ Please ensure the Halo Proxy daemon is running or reload it to apply routing changes.\n")
+
+		if strings.Trim(strings.TrimSpace(tld), ".") == "" {
+			fmt.Printf("✅ Custom TLD cleared for '%s' (the default '%s' applies).\n", project, cfg.TLD)
+		} else {
+			fmt.Printf("✅ Project '%s' is now served at https://%s.%s\n", project, project, config.NormalizeTLD(tld))
+		}
+		fmt.Println("⚠️  The daemon applies this within one poll cycle (~5s).")
 		return nil
 	},
 }

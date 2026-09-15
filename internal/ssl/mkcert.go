@@ -2,14 +2,21 @@ package ssl
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
-
-	"github.com/N3M1K/halo-proxy/internal/config"
 )
+
+// CertPair holds the paths to a certificate and its private key.
+type CertPair struct {
+	Cert string
+	Key  string
+}
 
 func CheckMkcert() error {
 	_, err := exec.LookPath("mkcert")
@@ -55,97 +62,69 @@ func getCertsDir() (string, error) {
 	return certsDir, nil
 }
 
-func GetCertPaths(tld string) (certPath string, keyPath string, err error) {
-	certsDir, err := getCertsDir()
-	if err != nil {
-		return "", "", err
-	}
-
-	cleanTld := strings.TrimPrefix(tld, ".")
-	certFile := filepath.Join(certsDir, fmt.Sprintf("_wildcard.%s.pem", cleanTld))
-	keyFile := filepath.Join(certsDir, fmt.Sprintf("_wildcard.%s-key.pem", cleanTld))
-
-	return certFile, keyFile, nil
-}
-
-func GenerateCert(tld string) (certPath string, keyPath string, err error) {
-	certsDir, err := getCertsDir()
-	if err != nil {
-		return "", "", err
-	}
-
-	cleanTld := strings.TrimPrefix(tld, ".")
-	wildcard := fmt.Sprintf("*.%s", cleanTld)
-	certFile := filepath.Join(certsDir, fmt.Sprintf("_wildcard.%s.pem", cleanTld))
-	keyFile := filepath.Join(certsDir, fmt.Sprintf("_wildcard.%s-key.pem", cleanTld))
-
-	// Check if certificates already exist AND are non-empty (daemon can write 0-byte files on TTY failure)
-	certOK := fileHasContent(certFile)
-	keyOK := fileHasContent(keyFile)
-	if certOK && keyOK {
-		return certFile, keyFile, nil
-	}
-
-	// Remove stale/corrupt files before regenerating
-	os.Remove(certFile)
-	os.Remove(keyFile)
-
-	var out bytes.Buffer
-	cmd := exec.Command("mkcert", "-cert-file", certFile, "-key-file", keyFile, wildcard)
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	if err := cmd.Run(); err != nil {
-		return "", "", fmt.Errorf("failed to generate cert for %s: %w\nOutput: %s", wildcard, err, out.String())
-	}
-
-	// Validate output files are non-empty
-	if !fileHasContent(certFile) || !fileHasContent(keyFile) {
-		return "", "", fmt.Errorf("mkcert ran but produced empty cert files for %s. Output: %s", wildcard, out.String())
-	}
-
-	return certFile, keyFile, nil
-}
-
 func fileHasContent(path string) bool {
 	fi, err := os.Stat(path)
 	return err == nil && fi.Size() > 0
 }
 
-// CertPair holds the paths to a cert and key file for a specific TLD.
-type CertPair struct {
-	Cert string
-	Key  string
-}
-
-// GenerateAllCerts generates wildcard certificates for every unique TLD
-// present in the config (default TLD + all project-specific overrides).
-func GenerateAllCerts(cfg *config.Config) ([]CertPair, error) {
-	// Collect all unique TLDs
-	seen := make(map[string]bool)
-	tlds := []string{}
-
-	addTLD := func(tld string) {
-		key := strings.TrimPrefix(tld, ".")
-		if key != "" && !seen[key] {
-			seen[key] = true
-			tlds = append(tlds, key)
-		}
-	}
-
-	addTLD(cfg.TLD)
-	for _, tld := range cfg.ProjectTLDs {
-		addTLD(tld)
-	}
-
-	var pairs []CertPair
-	for _, tld := range tlds {
-		cert, key, err := GenerateCert(tld)
-		if err != nil {
-			// Non-fatal: log and continue so other TLDs still work
-			fmt.Fprintf(os.Stderr, "[ssl] warning: failed to generate cert for *.%s: %v\n", tld, err)
+// normalizeHosts lowercases, trims and de-duplicates hostnames, sorted for a
+// stable order.
+func normalizeHosts(hosts []string) []string {
+	seen := make(map[string]bool, len(hosts))
+	out := make([]string, 0, len(hosts)+1)
+	for _, h := range hosts {
+		h = strings.ToLower(strings.TrimSpace(h))
+		if h == "" || seen[h] {
 			continue
 		}
-		pairs = append(pairs, CertPair{Cert: cert, Key: key})
+		seen[h] = true
+		out = append(out, h)
 	}
-	return pairs, nil
+	sort.Strings(out)
+	return out
+}
+
+// HostsHash returns a stable fingerprint for a set of hostnames.
+func HostsHash(hosts []string) string {
+	sum := sha256.Sum256([]byte(strings.Join(normalizeHosts(hosts), ",")))
+	return hex.EncodeToString(sum[:])
+}
+
+// EnsureCertForHosts makes sure a certificate covering every given hostname
+// (plus localhost) exists on disk, regenerating it only when the set changes.
+//
+// A wildcard like *.localhost is NOT usable here: RFC-compliant verifiers
+// (OpenSSL, Chrome, Firefox) reject wildcards whose suffix has no dot, which is
+// exactly the case for single-label TLDs such as localhost, test, dev or media.
+// So we list the actual hostnames as explicit SANs instead.
+func EnsureCertForHosts(hosts []string, previousHash string) (CertPair, string, error) {
+	certsDir, err := getCertsDir()
+	if err != nil {
+		return CertPair{}, "", err
+	}
+
+	certFile := filepath.Join(certsDir, "_hosts.pem")
+	keyFile := filepath.Join(certsDir, "_hosts-key.pem")
+
+	normalized := normalizeHosts(append([]string{"localhost"}, hosts...))
+	hash := HostsHash(normalized)
+
+	if hash == previousHash && fileHasContent(certFile) && fileHasContent(keyFile) {
+		return CertPair{Cert: certFile, Key: keyFile}, hash, nil
+	}
+
+	args := append([]string{"-cert-file", certFile, "-key-file", keyFile}, normalized...)
+
+	var out bytes.Buffer
+	cmd := exec.Command("mkcert", args...)
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	if err := cmd.Run(); err != nil {
+		return CertPair{}, "", fmt.Errorf("failed to generate certificate for %v: %w\nOutput: %s", normalized, err, out.String())
+	}
+	if !fileHasContent(certFile) || !fileHasContent(keyFile) {
+		return CertPair{}, "", fmt.Errorf("mkcert produced empty cert files for %v. Output: %s", normalized, out.String())
+	}
+
+	return CertPair{Cert: certFile, Key: keyFile}, hash, nil
 }

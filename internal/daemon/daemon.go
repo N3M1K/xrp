@@ -85,16 +85,10 @@ func Run(cfg *config.Config) error {
 	// Certificates: the interactive `halo start` command handles installing the
 	// mkcert CA into the system trust store. Here we only generate the certs
 	// (which never needs elevated privileges).
-	var certPairs []ssl.CertPair
+	// Certificates are generated per discovered hostname inside tick(); here we
+	// only verify mkcert is available.
 	if err := ssl.CheckMkcert(); err != nil {
 		logger.Printf("Warning: mkcert not found, HTTPS will be unavailable: %v", err)
-	} else {
-		if pairs, err := ssl.GenerateAllCerts(cfg); err != nil {
-			logger.Printf("Warning: partial cert generation failure: %v", err)
-		} else {
-			certPairs = pairs
-		}
-		logger.Printf("Certificates ready (%d)", len(certPairs))
 	}
 
 	// Check hosts file writability (this also serves as the admin/elevation check
@@ -143,7 +137,8 @@ func Run(cfg *config.Config) error {
 	logger.Printf("Daemon running, scanning every %d seconds", cfg.PollInterval)
 
 	// Perform an immediate first scan so `halo list` is populated right away.
-	tick(logger, cfg, certPairs, hostsWritable)
+	st := &daemonState{}
+	tick(logger, cfg, st, hostsWritable)
 
 	ticker := time.NewTicker(interval(cfg.PollInterval))
 	defer ticker.Stop()
@@ -164,14 +159,11 @@ func Run(cfg *config.Config) error {
 			// Reload config on every tick to pick up TLD changes from CLI/TUI
 			if freshCfg, err := config.LoadConfig(); err == nil {
 				cfg = freshCfg
-				if pairs, err := ssl.GenerateAllCerts(cfg); err == nil {
-					certPairs = pairs
-				}
 			}
 			// Apply poll interval changes on the fly.
 			ticker.Reset(interval(cfg.PollInterval))
 
-			tick(logger, cfg, certPairs, hostsWritable)
+			tick(logger, cfg, st, hostsWritable)
 		}
 	}
 }
@@ -183,8 +175,14 @@ func interval(seconds int) time.Duration {
 	return time.Duration(seconds) * time.Second
 }
 
+// daemonState carries values that must survive between poll cycles.
+type daemonState struct {
+	certHash  string
+	certPairs []ssl.CertPair
+}
+
 // tick performs one scan → enrich → publish → sync cycle.
-func tick(logger *log.Logger, cfg *config.Config, certPairs []ssl.CertPair, hostsWritable bool) {
+func tick(logger *log.Logger, cfg *config.Config, st *daemonState, hostsWritable bool) {
 	processes, err := scanner.ScanProcesses()
 	if err != nil {
 		logger.Printf("Error scanning processes: %v", err)
@@ -198,11 +196,12 @@ func tick(logger *log.Logger, cfg *config.Config, certPairs []ssl.CertPair, host
 	for i := range processes {
 		p := &processes[i]
 		tld := cfg.EffectiveTLD(p.ProjectName)
-		p.URL = fmt.Sprintf("https://%s.%s", p.ProjectName, tld)
+		host := fmt.Sprintf("%s.%s", p.ProjectName, tld)
+		p.URL = "https://" + host
 		if url, found := tunnels[p.ProjectName]; found {
 			p.TunnelURL = url
 		}
-		hostnames = append(hostnames, fmt.Sprintf("%s.%s", p.ProjectName, tld))
+		hostnames = append(hostnames, host)
 	}
 
 	if len(processes) > 0 {
@@ -218,7 +217,20 @@ func tick(logger *log.Logger, cfg *config.Config, certPairs []ssl.CertPair, host
 		}
 	}
 
-	caddyConfig := proxy.GenerateConfig(processes, cfg, certPairs)
+	// Issue a certificate whose SANs cover exactly the hostnames we discovered.
+	// Regenerated only when the set of hostnames changes. On failure we keep the
+	// previous certificate so already-working names don't regress.
+	if pair, hash, err := ssl.EnsureCertForHosts(hostnames, st.certHash); err != nil {
+		logger.Printf("Warning: certificate generation failed: %v", err)
+	} else {
+		if hash != st.certHash {
+			logger.Printf("Issued certificate for %d host(s)", len(hostnames)+1)
+		}
+		st.certHash = hash
+		st.certPairs = []ssl.CertPair{pair}
+	}
+
+	caddyConfig := proxy.GenerateConfig(processes, cfg, st.certPairs)
 	if err := proxy.ApplyConfig(cfg, caddyConfig); err != nil {
 		logger.Printf("Failed to apply proxy configuration: %v", err)
 	}
