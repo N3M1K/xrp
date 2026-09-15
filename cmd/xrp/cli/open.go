@@ -14,21 +14,21 @@ var openCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		project := args[0]
-		
-		tld := ".local"
+
+		tld := "localhost"
 		if cfg != nil && cfg.TLD != "" {
-			tld = cfg.TLD
+			tld = cfg.EffectiveTLD(project)
 		}
 		cleanTld := strings.TrimPrefix(tld, ".")
 		url := fmt.Sprintf("https://%s.%s", project, cleanTld)
 
 		fmt.Printf("Opening %s...\n", url)
-		
+
 		resp, err := socket.Send(socket.Request{
 			Cmd:  "open",
 			Args: map[string]string{"url": url},
 		})
-		
+
 		if err != nil {
 			fmt.Printf("\033[31mXRP daemon is not running. Start it with 'xrp start'.\033[0m\n")
 			return nil

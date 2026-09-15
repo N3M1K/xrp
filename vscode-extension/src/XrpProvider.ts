@@ -24,16 +24,19 @@ export class XrpProvider implements vscode.TreeDataProvider<XrpTreeItem> {
     }
 
     return processes.map(p => {
-      const url = p.ProjectName ? `https://${p.ProjectName}.local` : `http://localhost:${p.Port}`;
+      const url = p.URL || (p.ProjectName ? `https://${p.ProjectName}.localhost` : `http://localhost:${p.Port}`);
       const label = p.ProjectName ? `${p.ProjectName} (${p.KnownApp || 'Unknown'})` : `${p.ProcessName}:${p.Port}`;
-      
+      const tooltip = p.TunnelURL
+        ? `Port: ${p.Port} | PID: ${p.PID}\nPublic: ${p.TunnelURL}`
+        : `Port: ${p.Port} | PID: ${p.PID}`;
+
       const item = new XrpTreeItem(
         label,
         url,
-        `Port: ${p.Port} | PID: ${p.PID}`,
+        tooltip,
         vscode.TreeItemCollapsibleState.None
       );
-      
+
       // We set contextValue to xrp-service so our package.json knows when to show the inline open icon
       if (p.ProjectName || p.Port) {
         item.contextValue = "xrp-service";

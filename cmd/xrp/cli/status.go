@@ -19,7 +19,7 @@ var statusCmd = &cobra.Command{
 			fmt.Printf("%s%sXRP daemon is NOT running. Start it with 'xrp start'.%s\n", Bold, Red, Reset)
 			return nil
 		}
-		
+
 		if !resp.Success {
 			fmt.Printf("%s%sStatus check failed: %s%s\n", Bold, Red, resp.Error, Reset)
 			return nil
@@ -32,7 +32,7 @@ var statusCmd = &cobra.Command{
 		data, _ := os.ReadFile(pidFile)
 
 		fmt.Printf("%s%sDaemon is %s (PID: %s).%s\n", Bold, Green, statusStr, string(data), Reset)
-		
+
 		// Run list command afterwards
 		listCmd.RunE(cmd, args)
 		return nil

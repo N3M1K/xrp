@@ -19,15 +19,26 @@ func CheckMkcert() error {
 	return nil
 }
 
-func InstallTrustStore() error {
-	cmd := exec.Command("mkcert", "-install")
-	// Capture output — mkcert may fail silently if no TTY
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	err := cmd.Run()
-	if err != nil {
-		return fmt.Errorf("mkcert -install failed: %w\nOutput: %s", err, out.String())
+// InstallTrustStore installs the mkcert CA into the system trust store.
+//
+// This must only be called from an interactive CLI context: on Linux/macOS the
+// first install needs elevated privileges and mkcert will prompt for a sudo
+// password. The daemon must never call this (it would hang waiting on a TTY).
+func InstallTrustStore(mkcertPath string) error {
+	if mkcertPath == "" {
+		resolved, err := exec.LookPath("mkcert")
+		if err != nil {
+			return fmt.Errorf("mkcert not found in PATH: %w", err)
+		}
+		mkcertPath = resolved
+	}
+
+	cmd := exec.Command(mkcertPath, "-install")
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("mkcert -install failed: %w", err)
 	}
 	return nil
 }

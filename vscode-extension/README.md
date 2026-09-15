@@ -1,13 +1,13 @@
 # XRP Dashboard for VS Code
 
-This is the companion extension for **XRP**, the local zero-config reverse proxy daemon. It allows you to seamlessly view and access all your magically mapped `.local` domains right from your editor's sidebar!
+This is the companion extension for **XRP**, the local zero-config reverse proxy daemon. It allows you to seamlessly view and access all your magically mapped `.localhost` (and custom-TLD) domains right from your editor's sidebar!
 
 ## Features
 
-- **Real-Time Discovery**: Communicates locally with the XRP Daemon via Unix Sockets to instantly show you what development servers are active on your machine.
+- **Real-Time Discovery**: Communicates locally with the XRP Daemon over a loopback TCP socket (127.0.0.1:40192) to instantly show you what development servers are active on your machine.
 - **Sidebar Integration**: Introduces a clean "XRP" tab in your Activity Bar.
 - **Status Bar Indicator**: Always know exactly how many services are currently reverse proxied by XRP in the bottom right corner of VS Code.
-- **One-Click Open**: Launch your mapped `https://project.local` URLs directly from the tree view inline actions.
+- **One-Click Open**: Launch the exact URL reported by the daemon (respecting custom TLDs) directly from the tree view inline actions.
 - **Lightweight**: Uses high-performance local IPC to fetch metadata, drawing zero overhead.
 
 ## Requirements

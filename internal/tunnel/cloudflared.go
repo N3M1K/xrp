@@ -3,9 +3,12 @@ package tunnel
 import (
 	"bufio"
 	"fmt"
+	"net"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"sync"
+	"time"
 )
 
 var (
@@ -13,6 +16,8 @@ var (
 	tunnelURLs = make(map[string]string)
 	mu         sync.RWMutex
 )
+
+var urlRegex = regexp.MustCompile(`https://[a-zA-Z0-9-]+\.trycloudflare\.com`)
 
 // CheckCloudflared checks if cloudflared is installed
 func CheckCloudflared() error {
@@ -23,8 +28,9 @@ func CheckCloudflared() error {
 	return nil
 }
 
-// StartTunnel launches a cloudflared proxy for the given port and maps it to the projectName
-func StartTunnel(port int, projectName string) (string, error) {
+// StartTunnel launches a cloudflared quick tunnel for the given local address
+// and maps it to the project name.
+func StartTunnel(host string, port int, projectName string) (string, error) {
 	if err := CheckCloudflared(); err != nil {
 		return "", err
 	}
@@ -36,7 +42,12 @@ func StartTunnel(port int, projectName string) (string, error) {
 	}
 	mu.Unlock()
 
-	cmd := exec.Command("cloudflared", "tunnel", "--url", fmt.Sprintf("http://localhost:%d", port))
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	target := "http://" + net.JoinHostPort(host, strconv.Itoa(port))
+
+	cmd := exec.Command("cloudflared", "tunnel", "--url", target)
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return "", err
@@ -46,34 +57,43 @@ func StartTunnel(port int, projectName string) (string, error) {
 		return "", err
 	}
 
-	// Read stderr to find the URL
-	urlChan := make(chan string)
+	// Buffered so the reader goroutine never blocks and can keep draining
+	// cloudflared's stderr (otherwise the pipe buffer could fill up).
+	urlChan := make(chan string, 1)
 	go func() {
 		scanner := bufio.NewScanner(stderr)
-		urlRegex := regexp.MustCompile(`https://[a-zA-Z0-9-]+\.trycloudflare\.com`)
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		sent := false
 		for scanner.Scan() {
-			line := scanner.Text()
-			matches := urlRegex.FindStringSubmatch(line)
-			if len(matches) > 0 {
-				urlChan <- matches[0]
-				return
+			if sent {
+				continue
+			}
+			if match := urlRegex.FindString(scanner.Text()); match != "" {
+				urlChan <- match
+				sent = true
 			}
 		}
-		close(urlChan)
+		if !sent {
+			urlChan <- ""
+		}
 	}()
 
-	url := <-urlChan
-	if url == "" {
-		cmd.Process.Kill()
-		return "", fmt.Errorf("failed to extract tunnel URL")
+	select {
+	case url := <-urlChan:
+		if url == "" {
+			kill(cmd)
+			return "", fmt.Errorf("failed to extract tunnel URL (cloudflared exited early)")
+		}
+		mu.Lock()
+		tunnels[projectName] = cmd
+		tunnelURLs[projectName] = url
+		mu.Unlock()
+		return url, nil
+
+	case <-time.After(30 * time.Second):
+		kill(cmd)
+		return "", fmt.Errorf("timed out waiting for cloudflared to publish a URL")
 	}
-
-	mu.Lock()
-	tunnels[projectName] = cmd
-	tunnelURLs[projectName] = url
-	mu.Unlock()
-
-	return url, nil
 }
 
 // StopTunnel kills the running cloudflared process for a project
@@ -86,8 +106,7 @@ func StopTunnel(projectName string) error {
 		return fmt.Errorf("no tunnel running for %s", projectName)
 	}
 
-	cmd.Process.Kill()
-	cmd.Process.Wait()
+	kill(cmd)
 	delete(tunnels, projectName)
 	delete(tunnelURLs, projectName)
 	return nil
@@ -98,8 +117,7 @@ func StopAll() {
 	mu.Lock()
 	defer mu.Unlock()
 	for proj, cmd := range tunnels {
-		cmd.Process.Kill()
-		cmd.Process.Wait()
+		kill(cmd)
 		delete(tunnels, proj)
 		delete(tunnelURLs, proj)
 	}
@@ -109,9 +127,18 @@ func StopAll() {
 func GetActiveTunnels() map[string]string {
 	mu.RLock()
 	defer mu.RUnlock()
-	res := make(map[string]string)
+	res := make(map[string]string, len(tunnelURLs))
 	for k, v := range tunnelURLs {
 		res[k] = v
 	}
 	return res
+}
+
+// kill terminates and reaps a cloudflared process.
+func kill(cmd *exec.Cmd) {
+	if cmd == nil || cmd.Process == nil {
+		return
+	}
+	_ = cmd.Process.Kill()
+	_, _ = cmd.Process.Wait()
 }

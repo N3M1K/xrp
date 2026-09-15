@@ -250,7 +250,7 @@ func establishDependency(ctx context.Context, depName string, url string) (strin
 		if computed != checksum {
 			return "", fmt.Errorf("CRITICAL: SHA256 checksum mismatch for %s. Expected %s, got %s", depName, checksum, computed)
 		}
-		
+
 		// Map the payload back into a consumable reader for the extractors
 		streamReader = bytes.NewReader(bodyBytes)
 	}

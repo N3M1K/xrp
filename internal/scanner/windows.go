@@ -13,8 +13,8 @@ import (
 type WindowsScanner struct{}
 
 func (s *WindowsScanner) Scan() ([]Process, error) {
-	// Step 1: netstat -ano → port + PID
-	portToPID, err := getListeningPorts()
+	// Step 1: netstat -ano → port + PID + local bind address
+	portToPID, portToAddr, err := getListeningPorts()
 	if err != nil {
 		return nil, fmt.Errorf("netstat failed: %w", err)
 	}
@@ -101,6 +101,7 @@ func (s *WindowsScanner) Scan() ([]Process, error) {
 			ProjectName: projectName,
 			CWD:         cwd,
 			KnownApp:    knownApp,
+			Addr:        normalizeDialAddr(portToAddr[port]),
 		})
 	}
 
@@ -108,14 +109,15 @@ func (s *WindowsScanner) Scan() ([]Process, error) {
 }
 
 // getListeningPorts parses `netstat -ano` output.
-// Returns map of port → PID for LISTENING TCP ports only.
-func getListeningPorts() (map[int]int, error) {
+// Returns maps of port → PID and port → local bind host for LISTENING TCP ports.
+func getListeningPorts() (map[int]int, map[int]string, error) {
 	out, err := exec.Command("netstat", "-ano").Output()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	portToPID := make(map[int]int)
+	portToAddr := make(map[int]string)
 	lines := strings.Split(string(out), "\n")
 
 	for _, line := range lines {
@@ -137,8 +139,11 @@ func getListeningPorts() (map[int]int, error) {
 		localAddr := fields[1] // e.g. "0.0.0.0:3000" or "[::]:8096"
 		pidStr := fields[4]
 
-		// Extract port from local address
-		port, err := extractPort(localAddr)
+		host, portStr, ok := splitHostPort(localAddr)
+		if !ok {
+			continue
+		}
+		port, err := strconv.Atoi(portStr)
 		if err != nil {
 			continue
 		}
@@ -149,24 +154,10 @@ func getListeningPorts() (map[int]int, error) {
 		}
 
 		portToPID[port] = pid
+		portToAddr[port] = host
 	}
 
-	return portToPID, nil
-}
-
-// extractPort handles both IPv4 (0.0.0.0:3000) and IPv6 ([::]:8096) formats.
-func extractPort(addr string) (int, error) {
-	// Find last colon — works for both IPv4 and IPv6
-	idx := strings.LastIndex(addr, ":")
-	if idx == -1 {
-		return 0, fmt.Errorf("no colon in address: %s", addr)
-	}
-	portStr := addr[idx+1:]
-	port, err := strconv.Atoi(portStr)
-	if err != nil {
-		return 0, fmt.Errorf("invalid port: %s", portStr)
-	}
-	return port, nil
+	return portToPID, portToAddr, nil
 }
 
 // getProcessNames parses `tasklist /fo csv /nh` output.

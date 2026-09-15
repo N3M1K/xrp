@@ -36,12 +36,12 @@ type editingTLDMsg struct {
 }
 
 type model struct {
-	processes  []scanner.Process
-	cursor     int
-	tld        string
-	cfg        *config.Config
-	err        error
-	msg        string
+	processes []scanner.Process
+	cursor    int
+	tld       string
+	cfg       *config.Config
+	err       error
+	msg       string
 	// TLD editing state
 	editingTLD bool
 	tldInput   string
@@ -115,9 +115,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.cfg.ProjectTLDs == nil {
 					m.cfg.ProjectTLDs = make(map[string]string)
 				}
-				m.cfg.ProjectTLDs[msg.project] = msg.tld
+				if msg.tld == "" {
+					delete(m.cfg.ProjectTLDs, msg.project)
+				} else {
+					m.cfg.ProjectTLDs[msg.project] = msg.tld
+				}
 			}
-			m.msg = fmt.Sprintf("✅ TLD saved! %s.%s — daemon will apply on next poll.", msg.project, msg.tld)
+			if msg.tld == "" {
+				m.msg = fmt.Sprintf("✅ Custom TLD cleared for %s (default applies).", msg.project)
+			} else {
+				m.msg = fmt.Sprintf("✅ TLD saved! %s.%s — daemon applies it within one poll cycle.", msg.project, msg.tld)
+			}
 		}
 		return m, fetchProcessesCmd
 
@@ -177,13 +185,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter", "o":
 			if len(m.processes) > 0 {
 				p := m.processes[m.cursor]
-				url := fmt.Sprintf("http://localhost:%d", p.Port)
-				if p.ProjectName != "" {
-					effectiveTLD := m.tld
-					if custom := m.getProjectTLD(p.ProjectName); custom != "" {
-						effectiveTLD = custom
+				url := p.URL
+				if url == "" {
+					if p.ProjectName != "" {
+						effectiveTLD := m.tld
+						if custom := m.getProjectTLD(p.ProjectName); custom != "" {
+							effectiveTLD = custom
+						}
+						url = fmt.Sprintf("https://%s.%s", p.ProjectName, effectiveTLD)
+					} else {
+						url = fmt.Sprintf("http://localhost:%d", p.Port)
 					}
-					url = fmt.Sprintf("https://%s.%s", p.ProjectName, effectiveTLD)
 				}
 				socket.Send(socket.Request{
 					Cmd:  "open",

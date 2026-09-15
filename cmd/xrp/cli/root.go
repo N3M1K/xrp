@@ -13,7 +13,7 @@ var cfg *config.Config
 var rootCmd = &cobra.Command{
 	Use:   "xrp",
 	Short: "XRP is a local development reverse proxy with magically automatic TLS",
-	Long:  `XRP automatically scans your system for running development servers and magically proxies them to .local domains with trusted HTTPS.`,
+	Long:  `XRP automatically scans your system for running development servers and magically proxies them to .localhost domains with trusted HTTPS.`,
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.

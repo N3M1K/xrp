@@ -14,6 +14,9 @@ const marker = "# xrp-managed"
 var mu sync.Mutex
 
 func getHostsPath() string {
+	if override := os.Getenv("XRP_HOSTS_PATH"); override != "" {
+		return override
+	}
 	if runtime.GOOS == "windows" {
 		return `C:\Windows\System32\drivers\etc\hosts`
 	}
@@ -51,10 +54,16 @@ func SyncEntries(hostnames []string) error {
 	normalised = strings.ReplaceAll(normalised, "\r", "\n")
 	lines := strings.Split(normalised, "\n")
 
-	// Build a set of desired hostnames
-	desired := make(map[string]bool)
+	// Build an ordered, de-duplicated set of desired hostnames
+	seen := make(map[string]bool)
+	desired := make([]string, 0, len(hostnames))
 	for _, h := range hostnames {
-		desired[strings.ToLower(h)] = true
+		h = strings.TrimSpace(strings.ToLower(h))
+		if h == "" || seen[h] {
+			continue
+		}
+		seen[h] = true
+		desired = append(desired, h)
 	}
 
 	// Filter out old xrp-managed lines and empty trailing lines
@@ -73,7 +82,7 @@ func SyncEntries(hostnames []string) error {
 	}
 
 	// Add new entries
-	for _, h := range hostnames {
+	for _, h := range desired {
 		entry := fmt.Sprintf("127.0.0.1 %s %s", h, marker)
 		kept = append(kept, entry)
 	}
@@ -87,7 +96,6 @@ func SyncEntries(hostnames []string) error {
 
 	return nil
 }
-
 
 // RemoveAllEntries removes all xrp-managed entries from the hosts file.
 func RemoveAllEntries() error {

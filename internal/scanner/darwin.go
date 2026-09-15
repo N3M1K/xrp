@@ -21,14 +21,14 @@ func (s *DarwinScanner) Scan() ([]Process, error) {
 
 	var processes []Process
 	lines := strings.Split(string(out), "\n")
-	
+
 	currentPid := -1
 
 	for _, line := range lines {
 		if line == "" {
 			continue
 		}
-		
+
 		fieldType := line[0]
 		value := line[1:]
 
@@ -39,33 +39,34 @@ func (s *DarwinScanner) Scan() ([]Process, error) {
 				currentPid = pid
 			}
 		case 'n':
-			// value is like "*:8080" or "localhost:3000" or "127.0.0.1:4000"
-			parts := strings.Split(value, ":")
-			if len(parts) >= 2 {
-				portStr := parts[len(parts)-1]
-				port, err := strconv.Atoi(portStr)
-				if err == nil && currentPid != -1 {
-					procName := getProcessName(currentPid)
-					cwd := getProcessCwd(currentPid)
-					
-					// projectName will be refined in the main scanner logic, but we can do a fallback here
-					projectName := filepath.Base(cwd)
-					if projectName == "." || projectName == "/" {
-						projectName = ""
-					}
-					
-					knownApp := GetKnownApp(port)
-					
-					processes = append(processes, Process{
-						PID:         currentPid,
-						Port:        port,
-						ProcessName: procName,
-						ProjectName: projectName,
-						CWD:         cwd,
-						KnownApp:    knownApp,
-					})
-				}
+			// value is like "*:8080", "localhost:3000", "127.0.0.1:4000" or "[::1]:3000"
+			host, portStr, ok := splitHostPort(value)
+			if !ok {
+				continue
 			}
+			port, err := strconv.Atoi(portStr)
+			if err != nil || currentPid == -1 {
+				continue
+			}
+
+			procName := getProcessName(currentPid)
+			cwd := getProcessCwd(currentPid)
+
+			// projectName will be refined in the main scanner logic, but we can do a fallback here
+			projectName := filepath.Base(cwd)
+			if projectName == "." || projectName == "/" {
+				projectName = ""
+			}
+
+			processes = append(processes, Process{
+				PID:         currentPid,
+				Port:        port,
+				ProcessName: procName,
+				ProjectName: projectName,
+				CWD:         cwd,
+				KnownApp:    GetKnownApp(port),
+				Addr:        normalizeDialAddr(host),
+			})
 		}
 	}
 
@@ -88,7 +89,7 @@ func getProcessCwd(pid int) string {
 	if err != nil {
 		return ""
 	}
-	
+
 	lines := strings.Split(string(out), "\n")
 	for _, line := range lines {
 		if strings.HasPrefix(line, "n") {

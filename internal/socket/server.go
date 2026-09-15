@@ -18,17 +18,26 @@ import (
 var (
 	cachedProcesses []scanner.Process
 	cacheMutex      sync.RWMutex
+	shutdownFunc    func()
 )
+
+// SetShutdownHandler registers a callback invoked when a client sends the
+// "shutdown" command. This gives `xrp stop` a graceful, cross-platform way to
+// ask the daemon to exit (Windows has no usable SIGINT for background procs).
+func SetShutdownHandler(f func()) {
+	shutdownFunc = f
+}
 
 // UpdateProcesses safely stores the latest scanned processes array in the socket server state
 func UpdateProcesses(processes []scanner.Process) {
 	cacheMutex.Lock()
 	defer cacheMutex.Unlock()
-	
+
 	// Create a safe copy
 	cachedProcesses = make([]scanner.Process, len(processes))
 	copy(cachedProcesses, processes)
 }
+
 // TCP: required for Tauri (Rust) GUI compatibility on Windows
 func GetSocketPath() string {
 	return "127.0.0.1:40192"
@@ -57,7 +66,10 @@ func StartServer(logger *log.Logger) error {
 
 func handleConnection(conn net.Conn, logger *log.Logger) {
 	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(5 * time.Second))
+
+	// Bound only the request read; long-running commands (e.g. share) may take
+	// much longer than the initial handshake.
+	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 
 	var req Request
 	decoder := json.NewDecoder(conn)
@@ -65,6 +77,7 @@ func handleConnection(conn net.Conn, logger *log.Logger) {
 		sendError(conn, "Invalid JSON payload")
 		return
 	}
+	conn.SetDeadline(time.Time{})
 
 	switch req.Cmd {
 	case "list":
@@ -78,6 +91,12 @@ func handleConnection(conn net.Conn, logger *log.Logger) {
 
 	case "status":
 		sendSuccess(conn, "running")
+
+	case "shutdown":
+		sendSuccess(conn, "stopping")
+		if shutdownFunc != nil {
+			go shutdownFunc()
+		}
 
 	case "open":
 		url := req.Args["url"]
@@ -99,7 +118,19 @@ func handleConnection(conn net.Conn, logger *log.Logger) {
 			sendError(conn, "Invalid project or port")
 			return
 		}
-		url, err := tunnel.StartTunnel(port, project)
+
+		// Prefer the exact bind address the service was discovered on.
+		host := "127.0.0.1"
+		cacheMutex.RLock()
+		for _, p := range cachedProcesses {
+			if p.ProjectName == project && p.Port == port && p.Addr != "" {
+				host = p.Addr
+				break
+			}
+		}
+		cacheMutex.RUnlock()
+
+		url, err := tunnel.StartTunnel(host, port, project)
 		if err != nil {
 			sendError(conn, err.Error())
 			return

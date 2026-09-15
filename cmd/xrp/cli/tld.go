@@ -13,7 +13,7 @@ var setTldCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		project := args[0]
 		tld := args[1]
-		
+
 		if err := config.SetProjectTLD(project, tld); err != nil {
 			return fmt.Errorf("failed to save custom TLD: %w", err)
 		}

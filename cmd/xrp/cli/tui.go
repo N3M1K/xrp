@@ -11,7 +11,7 @@ var tuiCmd = &cobra.Command{
 	Use:   "tui",
 	Short: "Launch the interactive Terminal User Interface (TUI)",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		tld := ".local"
+		tld := "localhost"
 		if cfg != nil && cfg.TLD != "" {
 			tld = cfg.TLD
 		}

@@ -13,7 +13,7 @@ var unshareCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		project := args[0]
-		
+
 		resp, err := socket.Send(socket.Request{
 			Cmd:  "unshare",
 			Args: map[string]string{"project": project},

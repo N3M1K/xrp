@@ -97,7 +97,7 @@ func printDashboard(processes []scanner.Process) {
 		paddedProcess := padRight(p.ProcessName, processWidth)
 		paddedProject := padRight(p.ProjectName, projectWidth)
 		paddedApp := padRight(p.KnownApp, appWidth)
-		
+
 		if p.ProjectName == "" {
 			paddedProject = padRight("-", projectWidth)
 		}
@@ -105,36 +105,34 @@ func printDashboard(processes []scanner.Process) {
 			paddedApp = padRight("-", appWidth)
 		}
 
-		fmt.Printf("%s%s%s | %s | %s%s%s | %s%s%s | %s%s%s\n", 
-			Cyan, paddedPort, Reset, 
-			paddedPid, 
-			Yellow, paddedProcess, Reset, 
-			Green, paddedProject, Reset, 
+		fmt.Printf("%s%s%s | %s | %s%s%s | %s%s%s | %s%s%s\n",
+			Cyan, paddedPort, Reset,
+			paddedPid,
+			Yellow, paddedProcess, Reset,
+			Green, paddedProject, Reset,
 			Purple, paddedApp, Reset)
 	}
 	fmt.Println(strings.Repeat("=", portWidth+pidWidth+processWidth+projectWidth+appWidth+14))
-	
+
 	// Print actionable URLs
 	fmt.Println("\nAvailable URLs:")
 	for _, p := range processes {
-		var url string
-		if p.ProjectName != "" {
-			tld := ".local"
-			if cfg != nil && cfg.TLD != "" {
-				tld = cfg.TLD
-			}
-			if cfg != nil && cfg.ProjectTLDs != nil {
-				if custom, ok := cfg.ProjectTLDs[p.ProjectName]; ok && custom != "" {
-					tld = custom
+		url := p.URL
+		if url == "" {
+			if p.ProjectName != "" {
+				tld := "localhost"
+				if cfg != nil && cfg.TLD != "" {
+					tld = cfg.EffectiveTLD(p.ProjectName)
 				}
+				url = fmt.Sprintf("https://%s.%s", p.ProjectName, tld)
+			} else {
+				url = fmt.Sprintf("http://localhost:%d", p.Port)
 			}
-			
-			cleanTld := strings.TrimPrefix(tld, ".")
-			url = fmt.Sprintf("https://%s.%s", p.ProjectName, cleanTld)
-		} else {
-			url = fmt.Sprintf("http://localhost:%d", p.Port)
 		}
 		fmt.Printf("➜ %s%s%s (Port %d)\n", Bold, url, Reset, p.Port)
+		if p.TunnelURL != "" {
+			fmt.Printf("   🌐 public: %s%s%s\n", Green, p.TunnelURL, Reset)
+		}
 	}
 	fmt.Println()
 }

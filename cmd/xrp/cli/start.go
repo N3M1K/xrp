@@ -10,6 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/N3M1K/xrp/internal/socket"
+	"github.com/N3M1K/xrp/internal/ssl"
+	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 )
 
@@ -25,15 +28,27 @@ var startCmd = &cobra.Command{
 					return nil
 				}
 			}
-			os.Remove(pidFile) // stale, smazat
+			os.Remove(pidFile) // stale
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 
 		fmt.Println("Warming up XRP daemon environment...")
-		if err := runSpinnerUI(ctx); err != nil {
+		resolved, err := runSpinnerUI(ctx)
+		if err != nil {
 			return fmt.Errorf("failed to provision prerequisites: %w", err)
+		}
+
+		// Trust the local mkcert CA once. This is interactive because the very
+		// first install on Linux/macOS requires a sudo password. Skip entirely
+		// when there is no terminal so scripts don't hang.
+		if resolved.Mkcert != "" && stdinIsTerminal() {
+			fmt.Println("Ensuring the local development CA is trusted (mkcert -install)...")
+			if err := ssl.InstallTrustStore(resolved.Mkcert); err != nil {
+				fmt.Printf("⚠️  Could not install the local CA: %v\n", err)
+				fmt.Println("   HTTPS will show a certificate warning until you run: mkcert -install")
+			}
 		}
 
 		exe, err := os.Executable()
@@ -42,13 +57,63 @@ var startCmd = &cobra.Command{
 		}
 
 		c := exec.Command(exe, "daemon")
+		c.SysProcAttr = detachAttr()
+		c.Stdin, c.Stdout, c.Stderr = nil, nil, nil
 		if err := c.Start(); err != nil {
 			return fmt.Errorf("failed to start daemon: %w", err)
 		}
+		pid := c.Process.Pid
+		_ = c.Process.Release()
 
-		fmt.Printf("Daemon started with PID %d.\n", c.Process.Pid)
+		if !waitForDaemon(10 * time.Second) {
+			fmt.Printf("⚠️  Daemon (PID %d) did not become ready in time.\n", pid)
+			printLogTail()
+			return nil
+		}
+
+		fmt.Printf("Daemon started with PID %d.\n", pid)
 		return nil
 	},
+}
+
+// waitForDaemon polls the IPC socket until the daemon answers.
+func waitForDaemon(timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if resp, err := socket.SendWithTimeout(socket.Request{Cmd: "status"}, 750*time.Millisecond); err == nil && resp.Success {
+			return true
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	return false
+}
+
+// stdinIsTerminal reports whether stdin is an interactive terminal. This is
+// deliberately stricter than ModeCharDevice (which /dev/null also satisfies).
+func stdinIsTerminal() bool {
+	fd := os.Stdin.Fd()
+	return isatty.IsTerminal(fd) || isatty.IsCygwinTerminal(fd)
+}
+
+// printLogTail prints the last few lines of the daemon log to help diagnose a
+// failed startup.
+func printLogTail() {
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return
+	}
+	data, err := os.ReadFile(filepath.Join(cacheDir, "xrp", "xrp.log"))
+	if err != nil {
+		return
+	}
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	if len(lines) > 10 {
+		lines = lines[len(lines)-10:]
+	}
+	fmt.Println("--- last daemon log lines ---")
+	for _, l := range lines {
+		fmt.Println(l)
+	}
 }
 
 func init() {

@@ -8,7 +8,9 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
-	"strings"
+	"strconv"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/N3M1K/xrp/internal/config"
@@ -28,12 +30,11 @@ func getPIDFilePath() string {
 func WritePID() error {
 	pid := os.Getpid()
 	pidFile := getPIDFilePath()
-	return os.WriteFile(pidFile, []byte(fmt.Sprintf("%d", pid)), 0644)
+	return os.WriteFile(pidFile, []byte(strconv.Itoa(pid)), 0644)
 }
 
 func RemovePID() {
-	pidFile := getPIDFilePath()
-	os.Remove(pidFile)
+	os.Remove(getPIDFilePath())
 }
 
 func getLogFilePath() (string, error) {
@@ -60,8 +61,8 @@ func Run(cfg *config.Config) error {
 	defer logFile.Close()
 
 	logger := log.New(logFile, "[daemon] ", log.LstdFlags)
-	logger.Printf("Starting XRP daemon...")
-	logger.Printf("HTTP port: %d, HTTPS port: %d", cfg.HTTPPort, cfg.HTTPSPort)
+	logger.Printf("Starting XRP daemon (pid %d)...", os.Getpid())
+	logger.Printf("HTTP port: %d, HTTPS port: %d, admin port: %d", cfg.HTTPPort, cfg.HTTPSPort, cfg.CaddyPort)
 
 	if err := WritePID(); err != nil {
 		return fmt.Errorf("could not write PID file: %w", err)
@@ -69,10 +70,11 @@ func Run(cfg *config.Config) error {
 	defer RemovePID()
 
 	// Provision required system dependencies cleanly and concurrently
-	logger.Printf("Ensuring pre-packed dependencies (Caddy, mkcert, cloudflared) orchestrations...")
+	logger.Printf("Ensuring dependencies (Caddy, mkcert, cloudflared)...")
 	if _, err := deps.EnsureAll(context.Background()); err != nil {
 		logger.Printf("Warning: partial dependency provisioning failures: %v", err)
 	}
+	logger.Printf("Dependencies ready")
 
 	// Dynamically override PATH across child exec routines
 	if cacheDir, err := os.UserCacheDir(); err == nil {
@@ -80,20 +82,19 @@ func Run(cfg *config.Config) error {
 		os.Setenv("PATH", xrpBinDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	}
 
-	// Ensure mkcert is ready
+	// Certificates: the interactive `xrp start` command handles installing the
+	// mkcert CA into the system trust store. Here we only generate the certs
+	// (which never needs elevated privileges).
 	var certPairs []ssl.CertPair
 	if err := ssl.CheckMkcert(); err != nil {
-		logger.Printf("Warning: mkcert not found, SSL might not work. Please install it.")
+		logger.Printf("Warning: mkcert not found, HTTPS will be unavailable: %v", err)
 	} else {
-		logger.Printf("Generating/Verifying mkcert certificates for all configured TLDs")
-		if err := ssl.InstallTrustStore(); err != nil {
-			logger.Printf("Failed to install mkcert trust store: %v", err)
-		}
-		pairs, err := ssl.GenerateAllCerts(cfg)
-		if err != nil {
+		if pairs, err := ssl.GenerateAllCerts(cfg); err != nil {
 			logger.Printf("Warning: partial cert generation failure: %v", err)
+		} else {
+			certPairs = pairs
 		}
-		certPairs = pairs
+		logger.Printf("Certificates ready (%d)", len(certPairs))
 	}
 
 	// Check hosts file writability (this also serves as the admin/elevation check
@@ -101,29 +102,29 @@ func Run(cfg *config.Config) error {
 	hostsWritable := hosts.IsWritable()
 	if !hostsWritable {
 		if runtime.GOOS == "windows" {
-			logger.Printf("WARNING: XRP is not running as Administrator.")
-			logger.Printf("WARNING: Caddy CANNOT bind to ports 80/443 and domains will not resolve.")
-			logger.Printf("WARNING: Please restart XRP from an elevated (Administrator) terminal.")
+			logger.Printf("WARNING: hosts file is not writable. Restart XRP from an elevated (Administrator) terminal for custom TLDs to resolve.")
 		} else {
-			logger.Printf("WARNING: Hosts file is not writable. Domains will not resolve in the browser.")
-			logger.Printf("WARNING: Caddy may also fail to bind ports 80/443. Try: sudo setcap cap_net_bind_service=+ep $(which caddy)")
+			logger.Printf("WARNING: hosts file is not writable. Only .localhost domains will resolve; custom TLDs need root or a writable XRP_HOSTS_PATH.")
 		}
 	}
 
-	// Ensure Caddy starts (must happen AFTER hosts writability check so we have the hostsWritable flag)
-	if err := proxy.StartCaddy(); err != nil {
+	// Ensure Caddy starts
+	if err := proxy.StartCaddy(cfg); err != nil {
 		logger.Printf("Failed to start Caddy: %v", err)
+	} else {
+		logger.Printf("Caddy is running (admin 127.0.0.1:%d)", cfg.CaddyPort)
 	}
 
 	// Start socket server for IPC (CLI & VSCode)
+	shutdownCh := make(chan struct{})
+	var shutdownOnce sync.Once
+	socket.SetShutdownHandler(func() { shutdownOnce.Do(func() { close(shutdownCh) }) })
 	go func() {
 		if err := socket.StartServer(logger); err != nil {
 			logger.Printf("Failed to start IPC socket server: %v", err)
 		}
 	}()
 
-	ticker := time.NewTicker(time.Duration(cfg.PollInterval) * time.Second)
-	defer ticker.Stop()
 	defer tunnel.StopAll()
 	defer func() {
 		// Clean up hosts entries on shutdown
@@ -137,74 +138,88 @@ func Run(cfg *config.Config) error {
 	}()
 
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	logger.Printf("Daemon running, scanning every %d seconds", cfg.PollInterval)
+
+	// Perform an immediate first scan so `xrp list` is populated right away.
+	tick(logger, cfg, certPairs, hostsWritable)
+
+	ticker := time.NewTicker(interval(cfg.PollInterval))
+	defer ticker.Stop()
 
 	for {
 		select {
 		case sig := <-sigChan:
 			logger.Printf("Received signal %s, shutting down...", sig.String())
-			proxy.StopCaddy()
+			proxy.StopCaddy(cfg)
+			return nil
+
+		case <-shutdownCh:
+			logger.Printf("Shutdown requested via IPC, shutting down...")
+			proxy.StopCaddy(cfg)
 			return nil
 
 		case <-ticker.C:
 			// Reload config on every tick to pick up TLD changes from CLI/TUI
 			if freshCfg, err := config.LoadConfig(); err == nil {
 				cfg = freshCfg
-				// Always regenerate cert list — GenerateAllCerts skips existing valid certs
-				// but MUST return them so certPairs stays populated for Caddy.
-				// Bug fix: the old `&& len(pairs) > 0` guard caused certPairs to be
-				// cleared when all certs already existed (pairs returned, no new generated).
 				if pairs, err := ssl.GenerateAllCerts(cfg); err == nil {
 					certPairs = pairs
 				}
 			}
+			// Apply poll interval changes on the fly.
+			ticker.Reset(interval(cfg.PollInterval))
 
-			processes, err := scanner.ScanProcesses()
-			if err != nil {
-				logger.Printf("Error scanning processes: %v", err)
-				continue
-			}
-
-			if len(processes) > 0 {
-				logger.Printf("Found %d local development servers. Updating proxy...", len(processes))
-			}
-
-			// Map active tunnels
-			tunnels := tunnel.GetActiveTunnels()
-			for i := range processes {
-				if url, found := tunnels[processes[i].ProjectName]; found {
-					processes[i].TunnelURL = url
-				}
-			}
-
-			// Share with socket clients
-			socket.UpdateProcesses(processes)
-
-			// Build hostnames list and sync hosts file
-			if hostsWritable {
-				var hostnames []string
-				for _, p := range processes {
-					if p.ProjectName != "" {
-						tld := cfg.TLD
-						if custom, ok := cfg.ProjectTLDs[p.ProjectName]; ok && custom != "" {
-							tld = custom
-						}
-						cleanTld := strings.TrimPrefix(tld, ".")
-						hostnames = append(hostnames, fmt.Sprintf("%s.%s", p.ProjectName, cleanTld))
-					}
-				}
-				if err := hosts.SyncEntries(hostnames); err != nil {
-					logger.Printf("Failed to sync hosts file: %v", err)
-				}
-			}
-
-			// Generate and Apply Caddy config
-			caddyConfig := proxy.GenerateConfig(processes, cfg, certPairs)
-			if err := proxy.ApplyConfig(caddyConfig); err != nil {
-				logger.Printf("Failed to apply proxy configuration: %v", err)
-			}
+			tick(logger, cfg, certPairs, hostsWritable)
 		}
+	}
+}
+
+func interval(seconds int) time.Duration {
+	if seconds < 1 {
+		seconds = 1
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+// tick performs one scan → enrich → publish → sync cycle.
+func tick(logger *log.Logger, cfg *config.Config, certPairs []ssl.CertPair, hostsWritable bool) {
+	processes, err := scanner.ScanProcesses()
+	if err != nil {
+		logger.Printf("Error scanning processes: %v", err)
+		return
+	}
+
+	// Map active tunnels onto the discovered processes.
+	tunnels := tunnel.GetActiveTunnels()
+
+	var hostnames []string
+	for i := range processes {
+		p := &processes[i]
+		tld := cfg.EffectiveTLD(p.ProjectName)
+		p.URL = fmt.Sprintf("https://%s.%s", p.ProjectName, tld)
+		if url, found := tunnels[p.ProjectName]; found {
+			p.TunnelURL = url
+		}
+		hostnames = append(hostnames, fmt.Sprintf("%s.%s", p.ProjectName, tld))
+	}
+
+	if len(processes) > 0 {
+		logger.Printf("Found %d local development server(s). Updating proxy...", len(processes))
+	}
+
+	// Share with socket clients (CLI, TUI, VSCode)
+	socket.UpdateProcesses(processes)
+
+	if hostsWritable {
+		if err := hosts.SyncEntries(hostnames); err != nil {
+			logger.Printf("Failed to sync hosts file: %v", err)
+		}
+	}
+
+	caddyConfig := proxy.GenerateConfig(processes, cfg, certPairs)
+	if err := proxy.ApplyConfig(cfg, caddyConfig); err != nil {
+		logger.Printf("Failed to apply proxy configuration: %v", err)
 	}
 }

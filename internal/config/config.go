@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -20,6 +21,12 @@ type Config struct {
 }
 
 func SetProjectTLD(projectName, tld string) error {
+	projectName = strings.TrimSpace(projectName)
+	tld = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(tld)), ".")
+	if projectName == "" {
+		return fmt.Errorf("project name must not be empty")
+	}
+
 	projectTLDs := viper.GetStringMapString("project_tlds")
 	if projectTLDs == nil {
 		projectTLDs = make(map[string]string)
@@ -30,10 +37,26 @@ func SetProjectTLD(projectName, tld string) error {
 		projectTLDs[projectName] = tld
 	}
 	viper.Set("project_tlds", projectTLDs)
-	return viper.WriteConfig()
+
+	// viper.WriteConfig fails if the config file was never read; make sure it exists.
+	if err := viper.WriteConfig(); err != nil {
+		return viper.SafeWriteConfig()
+	}
+	return nil
 }
 
-
+// EffectiveTLD returns the TLD that applies to a project (without leading dot).
+func (c *Config) EffectiveTLD(projectName string) string {
+	tld := c.TLD
+	if custom, ok := c.ProjectTLDs[projectName]; ok && custom != "" {
+		tld = custom
+	}
+	tld = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(tld)), ".")
+	if tld == "" {
+		tld = "localhost"
+	}
+	return tld
+}
 
 func LoadConfig() (*Config, error) {
 	homeDir, err := os.UserHomeDir()
@@ -51,8 +74,8 @@ func LoadConfig() (*Config, error) {
 	viper.SetConfigFile(configFile)
 	viper.SetConfigType("toml")
 
-	// Set defaults — ports depend on admin status
-	viper.SetDefault("tld", ".test")
+	// Set defaults
+	viper.SetDefault("tld", ".localhost")
 	viper.SetDefault("project_tlds", map[string]string{})
 	viper.SetDefault("poll_interval", 5)
 	viper.SetDefault("caddy_port", 2019)

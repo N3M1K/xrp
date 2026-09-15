@@ -4,12 +4,16 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/N3M1K/xrp/internal/config"
 	"github.com/N3M1K/xrp/internal/deps"
@@ -19,7 +23,13 @@ import (
 
 // CaddyConfig represents the root of the Caddy JSON structure
 type CaddyConfig struct {
-	Apps Apps `json:"apps"`
+	Admin *AdminConfig `json:"admin,omitempty"`
+	Apps  Apps         `json:"apps"`
+}
+
+// AdminConfig pins the Caddy admin API to the configured loopback port.
+type AdminConfig struct {
+	Listen string `json:"listen,omitempty"`
 }
 
 type Apps struct {
@@ -70,8 +80,10 @@ type Match struct {
 }
 
 type Handle struct {
-	Handler   string     `json:"handler"`
-	Upstreams []Upstream `json:"upstreams,omitempty"`
+	Handler    string              `json:"handler"`
+	Upstreams  []Upstream          `json:"upstreams,omitempty"`
+	StatusCode int                 `json:"status_code,omitempty"`
+	Headers    map[string][]string `json:"headers,omitempty"`
 }
 
 type Upstream struct {
@@ -79,123 +91,152 @@ type Upstream struct {
 }
 
 // GenerateConfig creates a Caddy JSON configuration from a list of scanned processes.
+//
+// It builds two dedicated servers so plain HTTP and HTTPS behave correctly:
+//   - xrp_http  : redirects everything to HTTPS (308)
+//   - xrp_https : terminates TLS with the mkcert certs and reverse-proxies routes
+//
+// If no certificates are available it degrades gracefully to a plain HTTP proxy.
 func GenerateConfig(processes []scanner.Process, cfg *config.Config, certPairs []ssl.CertPair) CaddyConfig {
-	routes := []Route{}
+	var routes []Route
+	seenHost := make(map[string]bool)
 
 	for _, p := range processes {
 		if p.ProjectName == "" {
-			continue // Skip if no project name can be determined
+			continue
 		}
 
-		tld := cfg.TLD
-		if customTld, ok := cfg.ProjectTLDs[p.ProjectName]; ok && customTld != "" {
-			tld = customTld
+		host := fmt.Sprintf("%s.%s", p.ProjectName, cfg.EffectiveTLD(p.ProjectName))
+		if seenHost[host] {
+			continue // one route per hostname; first (lowest) port wins
 		}
-		cleanTld := strings.TrimPrefix(tld, ".")
+		seenHost[host] = true
 
-		// Clean the hostname (basic cleaning for MVP)
-		host := fmt.Sprintf("%s.%s", p.ProjectName, cleanTld)
-
-		route := Route{
-			Match: []Match{
-				{Host: []string{host}},
-			},
-			Handle: []Handle{
-				{
-					Handler: "reverse_proxy",
-					Upstreams: []Upstream{
-						{Dial: fmt.Sprintf("localhost:%d", p.Port)},
-					},
-				},
-			},
+		dialHost := p.Addr
+		if dialHost == "" {
+			dialHost = "127.0.0.1"
 		}
 
-		routes = append(routes, route)
+		routes = append(routes, Route{
+			Match: []Match{{Host: []string{host}}},
+			Handle: []Handle{{
+				Handler:   "reverse_proxy",
+				Upstreams: []Upstream{{Dial: net.JoinHostPort(dialHost, strconv.Itoa(p.Port))}},
+			}},
+		})
 	}
 
-	// Always disable Caddy's automatic HTTPS/ACME — we manage certs via mkcert.
-	// tls_connection_policies with an empty policy tells Caddy to use any
-	// locally-loaded certificate that matches the incoming SNI hostname.
-	// This is the correct approach for local dev / home lab: zero config for the user.
-	xrpServer := Server{
-		Listen: []string{
-			fmt.Sprintf(":%d", cfg.HTTPPort),
-			fmt.Sprintf(":%d", cfg.HTTPSPort),
-		},
-		Routes:    routes,
-		AutoHTTPS: &AutoHTTPSConfig{Disable: true},
+	servers := make(map[string]Server)
+	httpsEnabled := len(certPairs) > 0 && hasUsableCerts(certPairs)
+
+	if httpsEnabled {
+		httpsServer := Server{
+			Listen:                []string{fmt.Sprintf(":%d", cfg.HTTPSPort)},
+			Routes:                routes,
+			TLSConnectionPolicies: []TLSConnectionPolicy{{}},
+			AutoHTTPS:             &AutoHTTPSConfig{Disable: true},
+		}
+		servers["xrp_https"] = httpsServer
+
+		// Plain HTTP simply redirects to the matching HTTPS URL.
+		if cfg.HTTPPort != cfg.HTTPSPort {
+			servers["xrp_http"] = Server{
+				Listen:    []string{fmt.Sprintf(":%d", cfg.HTTPPort)},
+				AutoHTTPS: &AutoHTTPSConfig{Disable: true},
+				Routes: []Route{{
+					Handle: []Handle{{
+						Handler:    "static_response",
+						StatusCode: http.StatusPermanentRedirect,
+						Headers: map[string][]string{
+							"Location": {"https://{http.request.host}{http.request.uri}"},
+						},
+					}},
+				}},
+			}
+		}
+	} else {
+		// No trusted certs: serve the routes over plain HTTP so the user still
+		// gets a working proxy instead of a hard failure.
+		servers["xrp_http"] = Server{
+			Listen:    []string{fmt.Sprintf(":%d", cfg.HTTPPort)},
+			Routes:    routes,
+			AutoHTTPS: &AutoHTTPSConfig{Disable: true},
+		}
 	}
 
-	if len(certPairs) > 0 {
-		// An empty TLSConnectionPolicy matches every connection and instructs
-		// Caddy to pick the best-matching cert from the load_files pool.
-		xrpServer.TLSConnectionPolicies = []TLSConnectionPolicy{{}}
-	}
-
-	config := CaddyConfig{
+	c := CaddyConfig{
+		Admin: &AdminConfig{Listen: fmt.Sprintf("127.0.0.1:%d", cfg.CaddyPort)},
 		Apps: Apps{
-			HTTP: HTTPApp{
-				Servers: map[string]Server{
-					"xrp_server": xrpServer,
-				},
-			},
+			HTTP: HTTPApp{Servers: servers},
 		},
 	}
 
-	if len(certPairs) > 0 {
+	if httpsEnabled {
 		var loadFiles []LoadFile
 		for _, pair := range certPairs {
 			if pair.Cert != "" && pair.Key != "" {
-				loadFiles = append(loadFiles, LoadFile{
-					Certificate: pair.Cert,
-					Key:         pair.Key,
-				})
+				loadFiles = append(loadFiles, LoadFile{Certificate: pair.Cert, Key: pair.Key})
 			}
 		}
 		if len(loadFiles) > 0 {
-			config.Apps.TLS = &TLSApp{
-				Certificates: Certificates{
-					LoadFiles: loadFiles,
-				},
-			}
+			c.Apps.TLS = &TLSApp{Certificates: Certificates{LoadFiles: loadFiles}}
 		}
 	}
 
-	return config
+	return c
 }
 
-// ApplyConfig posts the CaddyConfig to the local Caddy Admin API.
-func ApplyConfig(config CaddyConfig) error {
-	data, err := json.Marshal(config)
+func hasUsableCerts(pairs []ssl.CertPair) bool {
+	for _, p := range pairs {
+		if p.Cert != "" && p.Key != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func adminURL(cfg *config.Config, path string) string {
+	return fmt.Sprintf("http://127.0.0.1:%d%s", cfg.CaddyPort, path)
+}
+
+var httpClient = &http.Client{Timeout: 10 * time.Second}
+
+// ApplyConfig posts the CaddyConfig to the Caddy Admin API.
+func ApplyConfig(cfg *config.Config, caddyConfig CaddyConfig) error {
+	data, err := json.Marshal(caddyConfig)
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, "http://localhost:2019/load", bytes.NewBuffer(data))
+	req, err := http.NewRequest(http.MethodPost, adminURL(cfg, "/load"), bytes.NewBuffer(data))
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to post config to caddy (is it running on :2019?): %w", err)
+		return fmt.Errorf("failed to post config to caddy (is it running on :%d?): %w", cfg.CaddyPort, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("caddy API returned status: %d", resp.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		msg := strings.TrimSpace(string(body))
+		lower := strings.ToLower(msg)
+		if strings.Contains(lower, "permission denied") || strings.Contains(lower, "access is denied") {
+			bin, _ := resolveCaddyBinary()
+			if runtime.GOOS == "windows" {
+				return fmt.Errorf("caddy could not bind privileged ports (80/443). Restart xrp from an Administrator terminal.\n%s", msg)
+			}
+			return fmt.Errorf("caddy could not bind privileged ports (80/443). Run: sudo setcap cap_net_bind_service=+ep %s\n%s", bin, msg)
+		}
+		if strings.Contains(lower, "address already in use") || strings.Contains(lower, "only one usage of each socket") {
+			return fmt.Errorf("caddy could not bind ports %d/%d — something else is already listening (another proxy or a root web server).\n%s", cfg.HTTPPort, cfg.HTTPSPort, msg)
+		}
+		return fmt.Errorf("caddy API returned status %d: %s", resp.StatusCode, msg)
 	}
 
-	return nil
-}
-
-// RemoveRoute is a stub for granular route removal via DELETE if needed.
-// For now, ApplyConfig overwrites the entire config.
-func RemoveRoute(port int) error {
-	// MVP: Not implemented as ApplyConfig rebuilds all routes.
-	// Future: DELETE /config/apps/http/servers/xrp_server/routes/...
 	return nil
 }
 
@@ -225,8 +266,10 @@ func resolveCaddyBinary() (string, error) {
 	return "", fmt.Errorf("caddy not found in PATH or deps cache (%s)", cacheDir)
 }
 
-// StartCaddy actively starts the Caddy process in the background.
-func StartCaddy() error {
+// StartCaddy starts the Caddy process in the background with a minimal
+// bootstrap config that only enables the admin API. The real configuration is
+// then pushed via ApplyConfig.
+func StartCaddy(cfg *config.Config) error {
 	caddyPath, err := resolveCaddyBinary()
 	if err != nil {
 		if runtime.GOOS == "darwin" {
@@ -235,31 +278,76 @@ func StartCaddy() error {
 		return err
 	}
 
-	// Check if already running via Admin API
-	resp, err := http.Get("http://localhost:2019/config/")
-	if err == nil && resp.StatusCode == 200 {
-		return nil // Already running
+	// Already running? Then there is nothing to do.
+	if resp, err := httpClient.Get(adminURL(cfg, "/config/")); err == nil {
+		resp.Body.Close()
+		if resp.StatusCode < 400 {
+			return nil
+		}
 	}
 
-	cmd := exec.Command(caddyPath, "start")
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
+	bootstrapPath, err := writeBootstrapConfig(cfg)
+	if err != nil {
+		return err
+	}
+
+	// NOTE: `caddy start` forks a background child that inherits our stdout/stderr.
+	// If we used CombinedOutput/bytes.Buffer here, Go would wait for the copied
+	// pipe to close and block until Caddy itself exits. Redirect to a real file
+	// so cmd.Run() only waits for the `caddy start` supervisor to return.
+	logPath := filepath.Join(filepath.Dir(bootstrapPath), "caddy-start.log")
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	defer logFile.Close()
+
+	cmd := exec.Command(caddyPath, "start", "--config", bootstrapPath)
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
 	if err := cmd.Run(); err != nil {
-		errMsg := stderr.String()
-		if errMsg == "" {
-			errMsg = err.Error()
+		msg := readFileString(logPath)
+		if msg == "" {
+			msg = err.Error()
 		}
-		return deps.WrapCaddyError(caddyPath, fmt.Errorf("caddy start failed: %s", errMsg))
+		return deps.WrapCaddyError(caddyPath, fmt.Errorf("caddy start failed: %s", msg))
 	}
 	return nil
 }
 
+func readFileString(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+// writeBootstrapConfig writes a minimal JSON config that pins the admin API to
+// the configured loopback port.
+func writeBootstrapConfig(cfg *config.Config) (string, error) {
+	binDir, err := deps.GetBinDir()
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(binDir, 0755); err != nil {
+		return "", err
+	}
+
+	path := filepath.Join(binDir, "caddy-bootstrap.json")
+	payload := fmt.Sprintf("{\"admin\":{\"listen\":\"127.0.0.1:%d\"}}", cfg.CaddyPort)
+	if err := os.WriteFile(path, []byte(payload), 0644); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
 // StopCaddy gracefully stops the Caddy process.
-func StopCaddy() error {
+func StopCaddy(cfg *config.Config) error {
 	caddyPath, err := resolveCaddyBinary()
 	if err != nil {
 		return nil // If we can't find caddy, nothing to stop
 	}
-	cmd := exec.Command(caddyPath, "stop")
+	cmd := exec.Command(caddyPath, "stop", "--address", fmt.Sprintf("127.0.0.1:%d", cfg.CaddyPort))
 	return cmd.Run()
 }

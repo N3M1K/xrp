@@ -1,19 +1,21 @@
 # XRP — Zero-Config Local Reverse Proxy
 
-> **xrp** (xxdev's Reverse Proxy) automatically discovers your running local development servers and routes them to clean `.local` domains with HTTPS — no config files, no manual hosts editing, no port memorizing.
+> **xrp** (xxdev's Reverse Proxy) automatically discovers your running local development servers and routes them to clean `.localhost` domains with HTTPS — no config files, no manual hosts editing, no port memorizing.
 
 ---
 
 ## ✨ Features
 
 - 🔍 **Auto-discovery** — scans running ports and maps them to named projects
-- 🌐 **`.local` HTTPS** — uses Caddy + mkcert for trusted local TLS out of the box
+- 🌐 **`.localhost` HTTPS** — uses Caddy + mkcert for trusted local TLS out of the box
 - 🏷️ **Per-project TLD overrides** — give any service its own custom domain (e.g. `jellyfin.media`)
 - 🚀 **Interactive TUI** — live dashboard with keyboard navigation
 - 🌍 **Cloudflared tunnels** — share any local service publicly in one keypress
 - 📦 **Self-bootstrapping** — downloads Caddy, mkcert, cloudflared automatically if missing
 - 💻 **Cross-platform** — Windows, Linux, macOS
 - ⚡ **Zero restart** — TLD changes take effect within one poll cycle (5s)
+
+> **Why `.localhost`?** Anything under `.localhost` is resolved to loopback by the OS and every modern browser (RFC 6761) — no `/etc/hosts` editing and no root needed. Custom TLDs (`*.media`, `*.dev`, …) are supported too and are written to the hosts file, which needs root/Administrator (or a writable `XRP_HOSTS_PATH`).
 
 ---
 
@@ -41,8 +43,10 @@ xrp list
 |---|---|
 | `xrp start` | Start the XRP daemon in the background |
 | `xrp stop` | Stop the running daemon |
+| `xrp reload` | Restart the daemon (picks up config changes) |
 | `xrp status` | Check if daemon is running |
 | `xrp list` | Print all detected services and their URLs |
+| `xrp open [project]` | Open a project URL in the browser |
 | `xrp tui` | Launch the interactive TUI dashboard |
 | `xrp share [project]` | Share a service publicly via cloudflared tunnel |
 | `xrp unshare [project]` | Stop a cloudflared tunnel |
@@ -50,6 +54,8 @@ xrp list
 | `xrp install` | Install the `xrp` binary to your user PATH |
 | `xrp version` | Print version |
 | `xrp help` | Show help |
+
+> On the **first** `xrp start`, xrp runs `mkcert -install` to trust a local CA. On Linux/macOS this is the only step that needs `sudo` (a one-time password prompt).
 
 ---
 
@@ -69,7 +75,7 @@ xrp list
 
 ## 🏷️ Custom TLDs
 
-XRP supports per-project TLD overrides. The default TLD is `.local`.
+XRP supports per-project TLD overrides. The default TLD is `.localhost` (zero-config, no hosts edit needed). Custom TLDs are added to the hosts file, which needs root/Administrator — if the hosts file isn't writable, xrp logs a warning and only `.localhost` names resolve.
 
 **Via CLI:**
 ```sh
@@ -90,7 +96,7 @@ Changes take effect within the next poll cycle (~5 seconds) — the daemon autom
 
 Config is persisted to `~/.config/xrp/config.toml`:
 ```toml
-tld = ".local"
+tld = ".localhost"
 
 [project_tlds]
   jellyfin = "media"
@@ -105,7 +111,7 @@ Config file: `~/.config/xrp/config.toml`
 
 | Key | Default | Description |
 |---|---|---|
-| `tld` | `.local` | Default TLD for all discovered services |
+| `tld` | `.localhost` | Default TLD for all discovered services |
 | `poll_interval` | `5` | Seconds between port scans |
 | `caddy_port` | `2019` | Caddy admin API port |
 | `http_port` | `80` | HTTP listening port (requires admin/root) |
@@ -150,8 +156,11 @@ xrp automatically excludes:
 
 xrp acts as a **control plane for Caddy**. On each poll it:
 1. Builds a Caddy JSON config with one reverse proxy route per service
-2. Posts it to `http://localhost:2019/load` (hot-reload, zero downtime)
-3. Updates `/etc/hosts` (or `C:\Windows\System32\drivers\etc\hosts`) with new entries
+2. Runs two logical servers: plain HTTP on `http_port` (308-redirects to HTTPS) and a TLS server on `https_port` that terminates with the local mkcert certs
+3. Posts the config to the Caddy admin API (hot-reload, zero downtime)
+4. Updates `/etc/hosts` (or `C:\Windows\System32\drivers\etc\hosts`) with new entries
+
+The reverse-proxy upstream uses the exact loopback address the service was discovered on (`127.0.0.1` or `::1`), so IPv4-only and IPv6-only dev servers both work.
 
 ### Dependency Management
 
@@ -206,7 +215,7 @@ The bundled VS Code extension (`vscode-extension/`) shows active services in the
 ## 🔒 Security
 
 - All local HTTPS uses **mkcert** certificates signed by a local CA installed in your system trust store
-- Downloaded binaries are verified with SHA256 checksums (populated per release)
+- Downloaded binaries are checked against pinned SHA256 checksums when populated (the checksum tables in `internal/deps` ship blank, so verification is skipped until a release fills them in)
 - No telemetry, no external calls except dependency downloads and cloudflared tunnels
 - Caddy admin API (`localhost:2019`) is bound to loopback only
 

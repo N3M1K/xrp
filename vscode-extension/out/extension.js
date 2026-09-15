@@ -6,14 +6,12 @@ import * as vscode from "vscode";
 
 // src/socket.ts
 import * as net from "net";
-import * as os from "os";
-import * as path from "path";
-function getSocketPath() {
-  return path.join(os.tmpdir(), "xrp.sock");
+function getSocketPort() {
+  return 40192;
 }
 async function sendCommand(cmd, args) {
   return new Promise((resolve, reject) => {
-    const client = net.createConnection({ path: getSocketPath() });
+    const client = net.createConnection({ port: getSocketPort(), host: "127.0.0.1" });
     client.on("connect", () => {
       client.write(JSON.stringify({ cmd, args }) + `
 `);
@@ -67,9 +65,11 @@ class XrpProvider {
       return [new XrpTreeItem("No running services detected.", "", "", vscode.TreeItemCollapsibleState.None)];
     }
     return processes.map((p) => {
-      const url = p.ProjectName ? `https://${p.ProjectName}.local` : `http://localhost:${p.Port}`;
+      const url = p.URL || (p.ProjectName ? `https://${p.ProjectName}.localhost` : `http://localhost:${p.Port}`);
       const label = p.ProjectName ? `${p.ProjectName} (${p.KnownApp || "Unknown"})` : `${p.ProcessName}:${p.Port}`;
-      const item = new XrpTreeItem(label, url, `Port: ${p.Port} | PID: ${p.PID}`, vscode.TreeItemCollapsibleState.None);
+      const tooltip = p.TunnelURL ? `Port: ${p.Port} | PID: ${p.PID}
+Public: ${p.TunnelURL}` : `Port: ${p.Port} | PID: ${p.PID}`;
+      const item = new XrpTreeItem(label, url, tooltip, vscode.TreeItemCollapsibleState.None);
       if (p.ProjectName || p.Port) {
         item.contextValue = "xrp-service";
       }
@@ -137,6 +137,6 @@ function deactivate() {
   }
 }
 export {
-  deactivate,
-  activate
+  activate,
+  deactivate
 };

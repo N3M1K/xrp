@@ -12,12 +12,14 @@ import (
 
 type depsMsg struct {
 	err error
+	res deps.ResolvedDeps
 }
 
 type spinnerModel struct {
 	spinner  spinner.Model
 	quitting bool
 	err      error
+	tres     deps.ResolvedDeps
 	ctx      context.Context
 }
 
@@ -32,8 +34,8 @@ func (m spinnerModel) Init() tea.Cmd {
 	return tea.Batch(
 		m.spinner.Tick,
 		func() tea.Msg {
-			_, err := deps.EnsureAll(m.ctx)
-			return depsMsg{err: err}
+			res, err := deps.EnsureAll(m.ctx)
+			return depsMsg{err: err, res: res}
 		},
 	)
 }
@@ -47,6 +49,7 @@ func (m spinnerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case depsMsg:
 		m.err = msg.err
+		m.tres = msg.res
 		m.quitting = true
 		return m, tea.Quit
 	case spinner.TickMsg:
@@ -67,16 +70,28 @@ func (m spinnerModel) View() string {
 	return fmt.Sprintf("\n   %s Downloading and caching binary dependencies...\n\n", m.spinner.View())
 }
 
-func runSpinnerUI(ctx context.Context) error {
+func runSpinnerUI(ctx context.Context) (deps.ResolvedDeps, error) {
+	// Bubble Tea needs a real TTY. Fall back to plain output so `xrp start`
+	// still works from scripts, CI, or a non-interactive shell.
+	if !stdinIsTerminal() {
+		fmt.Println("Downloading and caching binary dependencies...")
+		res, err := deps.EnsureAll(ctx)
+		if err != nil {
+			return res, err
+		}
+		fmt.Println("✅ Dependencies provisioned.")
+		return res, nil
+	}
+
 	p := tea.NewProgram(initialSpinnerModel(ctx))
 	m, err := p.Run()
 	if err != nil {
-		return err
+		return deps.ResolvedDeps{}, err
 	}
-	
+
 	// Handle native Bubbletea context captures
 	if model, ok := m.(spinnerModel); ok {
-		return model.err
+		return model.tres, model.err
 	}
-	return nil
+	return deps.ResolvedDeps{}, nil
 }

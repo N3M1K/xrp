@@ -9,6 +9,9 @@ export interface Process {
   ProjectName: string;
   CWD: string;
   KnownApp: string;
+  Addr: string;
+  URL: string;
+  TunnelURL: string;
 }
 
 export interface Response {

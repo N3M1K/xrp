@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/N3M1K/xrp/internal/scanner"
 	"github.com/N3M1K/xrp/internal/socket"
@@ -17,7 +18,7 @@ var shareCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		project := args[0]
-		
+
 		respList, err := socket.Send(socket.Request{Cmd: "list"})
 		if err != nil || !respList.Success {
 			return fmt.Errorf("daemon is not running or error: %v", err)
@@ -39,11 +40,11 @@ var shareCmd = &cobra.Command{
 		}
 
 		fmt.Printf("Starting secure tunnel for %s (Port %d)...\n", project, targetPort)
-		
-		resp, err := socket.Send(socket.Request{
+
+		resp, err := socket.SendWithTimeout(socket.Request{
 			Cmd:  "share",
 			Args: map[string]string{"project": project, "port": strconv.Itoa(targetPort)},
-		})
+		}, 60*time.Second)
 
 		if err != nil {
 			return fmt.Errorf("failed to communicate with daemon: %w", err)
@@ -57,7 +58,7 @@ var shareCmd = &cobra.Command{
 		json.Unmarshal(resp.Data, &url)
 
 		fmt.Printf("✅ Tunnel active! Public URL: %s%s%s%s\n", Bold, Green, url, Reset)
-		
+
 		if err := clipboard.WriteAll(url); err == nil {
 			fmt.Println("📋 URL copied to clipboard.")
 		} else {
