@@ -9,12 +9,12 @@ import (
 	"sync"
 )
 
-const marker = "# xrp-managed"
+const marker = "# halo-managed"
 
 var mu sync.Mutex
 
 func getHostsPath() string {
-	if override := os.Getenv("XRP_HOSTS_PATH"); override != "" {
+	if override := os.Getenv("HALO_HOSTS_PATH"); override != "" {
 		return override
 	}
 	if runtime.GOOS == "windows" {
@@ -35,7 +35,7 @@ func IsWritable() bool {
 }
 
 // SyncEntries ensures all given hostnames are present in the hosts file as 127.0.0.1 entries.
-// Removes stale xrp-managed entries that are no longer active.
+// Removes stale halo-managed entries that are no longer active.
 func SyncEntries(hostnames []string) error {
 	mu.Lock()
 	defer mu.Unlock()
@@ -66,12 +66,12 @@ func SyncEntries(hostnames []string) error {
 		desired = append(desired, h)
 	}
 
-	// Filter out old xrp-managed lines and empty trailing lines
+	// Filter out old halo-managed lines and empty trailing lines
 	var kept []string
 	for _, line := range lines {
 		line = strings.TrimRight(line, "\r") // belt-and-suspenders trim
 		if strings.Contains(line, marker) {
-			continue // remove old xrp entries
+			continue // remove old halo entries
 		}
 		kept = append(kept, line)
 	}
@@ -97,7 +97,7 @@ func SyncEntries(hostnames []string) error {
 	return nil
 }
 
-// RemoveAllEntries removes all xrp-managed entries from the hosts file.
+// RemoveAllEntries removes all halo-managed entries from the hosts file.
 func RemoveAllEntries() error {
 	mu.Lock()
 	defer mu.Unlock()

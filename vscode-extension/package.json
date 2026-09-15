@@ -1,14 +1,14 @@
 {
-  "name": "xrp-vscode",
-  "displayName": "XRP Dashboard",
-  "description": "Companion extension for XRP local reverse proxy",
+  "name": "halo-proxy-vscode",
+  "displayName": "Halo Proxy Dashboard",
+  "description": "Companion extension for the Halo Proxy local reverse proxy",
   "version": "0.1.0",
   "publisher": "n3m1k",
   "repository": {
     "type": "git",
-    "url": "https://github.com/n3m1k/xrp"
+    "url": "https://github.com/n3m1k/halo-proxy"
   },
-  "license": "MIT",
+  "license": "GPL-3.0-or-later",
   "icon": "resources/icon.png",
   "engines": {
     "vscode": "^1.90.0"
@@ -22,16 +22,16 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "xrp-sidebar",
-          "title": "XRP",
+          "id": "halo-sidebar",
+          "title": "Halo Proxy",
           "icon": "resources/icon.svg"
         }
       ]
     },
     "views": {
-      "xrp-sidebar": [
+      "halo-sidebar": [
         {
-          "id": "xrp-services",
+          "id": "halo-services",
           "name": "Local Services",
           "icon": "resources/icon.svg"
         }
@@ -39,12 +39,12 @@
     },
     "commands": [
       {
-        "command": "xrp.refresh",
-        "title": "Refresh XRP Services",
+        "command": "halo.refresh",
+        "title": "Refresh Halo Proxy Services",
         "icon": "$(refresh)"
       },
       {
-        "command": "xrp.open",
+        "command": "halo.open",
         "title": "Open Local Domain in Browser",
         "icon": "$(browser)"
       }
@@ -52,15 +52,15 @@
     "menus": {
       "view/title": [
         {
-          "command": "xrp.refresh",
-          "when": "view == xrp-services",
+          "command": "halo.refresh",
+          "when": "view == halo-services",
           "group": "navigation"
         }
       ],
       "view/item/context": [
         {
-          "command": "xrp.open",
-          "when": "view == xrp-services",
+          "command": "halo.open",
+          "when": "view == halo-services",
           "group": "inline"
         }
       ]

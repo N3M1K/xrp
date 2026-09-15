@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/N3M1K/xrp/internal/config"
-	"github.com/N3M1K/xrp/internal/scanner"
-	"github.com/N3M1K/xrp/internal/socket"
+	"github.com/N3M1K/halo-proxy/internal/config"
+	"github.com/N3M1K/halo-proxy/internal/scanner"
+	"github.com/N3M1K/halo-proxy/internal/socket"
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -268,11 +268,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) View() string {
-	s := titleStyle.Render("🚀 XRP Dashboard")
+	s := titleStyle.Render("🚀 Halo Proxy Dashboard")
 	s += "\n"
 
 	if m.err != nil {
-		s += errorStyle.Render(fmt.Sprintf("Error: %v (Is daemon running? Run 'xrp start')", m.err))
+		s += errorStyle.Render(fmt.Sprintf("Error: %v (Is daemon running? Run 'halo start')", m.err))
 		s += "\n\n"
 	} else if len(m.processes) == 0 {
 		s += subtleStyle.Render("No active local development servers found.")

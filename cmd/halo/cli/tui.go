@@ -3,7 +3,7 @@ package cli
 import (
 	"strings"
 
-	"github.com/N3M1K/xrp/internal/tui"
+	"github.com/N3M1K/halo-proxy/internal/tui"
 	"github.com/spf13/cobra"
 )
 

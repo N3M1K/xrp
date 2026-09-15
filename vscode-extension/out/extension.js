@@ -1,7 +1,7 @@
 // src/extension.ts
 import * as vscode2 from "vscode";
 
-// src/XrpProvider.ts
+// src/HaloProvider.ts
 import * as vscode from "vscode";
 
 // src/socket.ts
@@ -46,8 +46,8 @@ async function fetchProcesses() {
   return [];
 }
 
-// src/XrpProvider.ts
-class XrpProvider {
+// src/HaloProvider.ts
+class HaloProvider {
   _onDidChangeTreeData = new vscode.EventEmitter;
   onDidChangeTreeData = this._onDidChangeTreeData.event;
   refresh() {
@@ -62,23 +62,23 @@ class XrpProvider {
     }
     const processes = await fetchProcesses();
     if (processes.length === 0) {
-      return [new XrpTreeItem("No running services detected.", "", "", vscode.TreeItemCollapsibleState.None)];
+      return [new HaloTreeItem("No running services detected.", "", "", vscode.TreeItemCollapsibleState.None)];
     }
     return processes.map((p) => {
       const url = p.URL || (p.ProjectName ? `https://${p.ProjectName}.localhost` : `http://localhost:${p.Port}`);
       const label = p.ProjectName ? `${p.ProjectName} (${p.KnownApp || "Unknown"})` : `${p.ProcessName}:${p.Port}`;
       const tooltip = p.TunnelURL ? `Port: ${p.Port} | PID: ${p.PID}
 Public: ${p.TunnelURL}` : `Port: ${p.Port} | PID: ${p.PID}`;
-      const item = new XrpTreeItem(label, url, tooltip, vscode.TreeItemCollapsibleState.None);
+      const item = new HaloTreeItem(label, url, tooltip, vscode.TreeItemCollapsibleState.None);
       if (p.ProjectName || p.Port) {
-        item.contextValue = "xrp-service";
+        item.contextValue = "halo-service";
       }
       return item;
     });
   }
 }
 
-class XrpTreeItem extends vscode.TreeItem {
+class HaloTreeItem extends vscode.TreeItem {
   label;
   url;
   tooltip;
@@ -99,12 +99,12 @@ class XrpTreeItem extends vscode.TreeItem {
 var statusBarItem;
 var refreshInterval;
 function activate(context) {
-  const xrpProvider = new XrpProvider;
-  vscode2.window.registerTreeDataProvider("xrp-services", xrpProvider);
-  context.subscriptions.push(vscode2.commands.registerCommand("xrp.refresh", () => {
-    xrpProvider.refresh();
+  const haloProvider = new HaloProvider;
+  vscode2.window.registerTreeDataProvider("halo-services", haloProvider);
+  context.subscriptions.push(vscode2.commands.registerCommand("halo.refresh", () => {
+    haloProvider.refresh();
     updateStatusBar();
-  }), vscode2.commands.registerCommand("xrp.open", async (item) => {
+  }), vscode2.commands.registerCommand("halo.open", async (item) => {
     if (item && item.url) {
       try {
         await sendCommand("open", { url: item.url });
@@ -117,14 +117,14 @@ function activate(context) {
   context.subscriptions.push(statusBarItem);
   updateStatusBar();
   refreshInterval = setInterval(() => {
-    xrpProvider.refresh();
+    haloProvider.refresh();
     updateStatusBar();
   }, 5000);
 }
 async function updateStatusBar() {
   const processes = await fetchProcesses();
   if (processes.length > 0) {
-    statusBarItem.text = `$(globe) XRP: ${processes.length}`;
+    statusBarItem.text = `$(globe) Halo: ${processes.length}`;
     statusBarItem.tooltip = "Local proxy domains are active";
     statusBarItem.show();
   } else {

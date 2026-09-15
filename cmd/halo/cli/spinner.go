@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/N3M1K/xrp/internal/deps"
+	"github.com/N3M1K/halo-proxy/internal/deps"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -71,7 +71,7 @@ func (m spinnerModel) View() string {
 }
 
 func runSpinnerUI(ctx context.Context) (deps.ResolvedDeps, error) {
-	// Bubble Tea needs a real TTY. Fall back to plain output so `xrp start`
+	// Bubble Tea needs a real TTY. Fall back to plain output so `halo start`
 	// still works from scripts, CI, or a non-interactive shell.
 	if !stdinIsTerminal() {
 		fmt.Println("Downloading and caching binary dependencies...")

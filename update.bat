@@ -2,10 +2,10 @@
 setlocal
 
 :: Vypnuti stare instance. Windows ma radsi zpetna lomitka.
-if exist xrp.exe (
-    .\xrp stop
+if exist halo.exe (
+    .\halo stop
 ) else (
-    echo [INFO] xrp.exe nenalezeno, neni co zastavovat.
+    echo [INFO] halo.exe nenalezeno, neni co zastavovat.
 )
 
 :: 1. Zkusime globalni PATH
@@ -35,7 +35,7 @@ echo [ERROR] go.exe se nenaslo. Mas to vubec nainstalovany, nebo jsi rozbil PATH
 exit /b 1
 
 :build
-"%GO_CMD%" build ./cmd/xrp
+"%GO_CMD%" build ./cmd/halo
 if %ERRORLEVEL% equ 0 (
     echo [OK] Build uspesny.
 ) else (

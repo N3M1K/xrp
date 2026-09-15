@@ -10,17 +10,17 @@ import (
 	"strings"
 	"time"
 
-	"github.com/N3M1K/xrp/internal/socket"
-	"github.com/N3M1K/xrp/internal/ssl"
+	"github.com/N3M1K/halo-proxy/internal/socket"
+	"github.com/N3M1K/halo-proxy/internal/ssl"
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 )
 
 var startCmd = &cobra.Command{
 	Use:   "start",
-	Short: "Start the XRP daemon in the background",
+	Short: "Start the Halo Proxy daemon in the background",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		pidFile := filepath.Join(os.TempDir(), "xrp.pid")
+		pidFile := filepath.Join(os.TempDir(), "halo.pid")
 		if pidBytes, err := os.ReadFile(pidFile); err == nil {
 			if pid, err := strconv.Atoi(strings.TrimSpace(string(pidBytes))); err == nil {
 				if isProcessRunning(pid) {
@@ -34,7 +34,7 @@ var startCmd = &cobra.Command{
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 
-		fmt.Println("Warming up XRP daemon environment...")
+		fmt.Println("Warming up Halo Proxy daemon environment...")
 		resolved, err := runSpinnerUI(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to provision prerequisites: %w", err)
@@ -102,7 +102,7 @@ func printLogTail() {
 	if err != nil {
 		return
 	}
-	data, err := os.ReadFile(filepath.Join(cacheDir, "xrp", "xrp.log"))
+	data, err := os.ReadFile(filepath.Join(cacheDir, "halo", "halo.log"))
 	if err != nil {
 		return
 	}

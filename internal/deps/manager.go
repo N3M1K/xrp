@@ -35,7 +35,7 @@ type CaddyPermissionError struct {
 
 func (e *CaddyPermissionError) Error() string {
 	if e.OS == "windows" {
-		return fmt.Sprintf("\n🛡️  Caddy requires Administrator privileges to seamlessly bind secure local proxy ports (80 and 443) dynamically.\n   Please relaunch XRP from an Administrator elevation locally to activate secure tunneling.\n   Original error: %v\n", e.Err)
+		return fmt.Sprintf("\n🛡️  Caddy requires Administrator privileges to seamlessly bind secure local proxy ports (80 and 443) dynamically.\n   Please relaunch Halo Proxy from an Administrator elevation locally to activate secure tunneling.\n   Original error: %v\n", e.Err)
 	}
 	return fmt.Sprintf("⚠️ Caddy needs permission to bind ports 80/443. Run:\nsudo setcap cap_net_bind_service=+ep %s\nOriginal error: %v", e.Path, e.Err)
 }
@@ -53,13 +53,13 @@ func WrapCaddyError(path string, err error) error {
 	return err
 }
 
-// GetBinDir returns the path to the XRP local binary cache directory.
+// GetBinDir returns the path to the Halo Proxy local binary cache directory.
 func GetBinDir() (string, error) {
 	cacheDir, err := os.UserCacheDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(cacheDir, "xrp", "bin"), nil
+	return filepath.Join(cacheDir, "halo", "bin"), nil
 }
 
 // Security checksum maps to aggressively combat supply chain risks.
@@ -198,12 +198,12 @@ func establishDependency(ctx context.Context, depName string, url string) (strin
 		return "", fmt.Errorf("failed locating system cache directory: %v", err)
 	}
 
-	xrpBinDir := filepath.Join(cacheDir, "xrp", "bin")
-	if err := os.MkdirAll(xrpBinDir, 0755); err != nil {
+	haloBinDir := filepath.Join(cacheDir, "halo", "bin")
+	if err := os.MkdirAll(haloBinDir, 0755); err != nil {
 		return "", err
 	}
 
-	cachePath := filepath.Join(xrpBinDir, binNameWanted)
+	cachePath := filepath.Join(haloBinDir, binNameWanted)
 	if stat, err := os.Stat(cachePath); err == nil && !stat.IsDir() {
 		// Valid binary natively accessible within local namespace
 		return cachePath, nil
@@ -256,15 +256,15 @@ func establishDependency(ctx context.Context, depName string, url string) (strin
 	}
 
 	if strings.HasSuffix(url, ".zip") {
-		return extractZip(streamReader, xrpBinDir, binNameWanted)
+		return extractZip(streamReader, haloBinDir, binNameWanted)
 	} else if strings.HasSuffix(url, ".tar.gz") || strings.HasSuffix(url, ".tgz") {
-		return extractTarGz(streamReader, xrpBinDir, binNameWanted)
+		return extractTarGz(streamReader, haloBinDir, binNameWanted)
 	}
 	return extractRaw(streamReader, cachePath)
 }
 
 func extractZip(src io.Reader, destDir, binName string) (string, error) {
-	tmpFile, err := os.CreateTemp("", "xrp-download-*.zip")
+	tmpFile, err := os.CreateTemp("", "halo-download-*.zip")
 	if err != nil {
 		return "", err
 	}

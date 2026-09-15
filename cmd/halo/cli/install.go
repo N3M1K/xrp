@@ -14,12 +14,12 @@ import (
 
 var installCmd = &cobra.Command{
 	Use:   "install",
-	Short: "Install xrp to your PATH so it can be used from anywhere",
+	Short: "Install halo to your PATH so it can be used from anywhere",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Find the currently running binary
 		self, err := os.Executable()
 		if err != nil {
-			return fmt.Errorf("could not determine xrp binary path: %w", err)
+			return fmt.Errorf("could not determine halo binary path: %w", err)
 		}
 		self, err = filepath.EvalSymlinks(self)
 		if err != nil {
@@ -38,15 +38,15 @@ var installCmd = &cobra.Command{
 }
 
 func installWindows(self string) error {
-	binName := "xrp.exe"
-	installDir := filepath.Join(os.Getenv("LOCALAPPDATA"), "xrp", "bin")
+	binName := "halo.exe"
+	installDir := filepath.Join(os.Getenv("LOCALAPPDATA"), "halo", "bin")
 
 	if err := os.MkdirAll(installDir, 0755); err != nil {
 		return fmt.Errorf("could not create install directory: %w", err)
 	}
 
 	dest := filepath.Join(installDir, binName)
-	fmt.Printf("📦 Installing xrp to %s...\n", dest)
+	fmt.Printf("📦 Installing halo to %s...\n", dest)
 
 	if err := copyFile(self, dest); err != nil {
 		return fmt.Errorf("could not copy binary: %w", err)
@@ -55,8 +55,8 @@ func installWindows(self string) error {
 	// Check if already in user PATH
 	currentPath := os.Getenv("PATH")
 	if strings.Contains(strings.ToLower(currentPath), strings.ToLower(installDir)) {
-		fmt.Printf("✅ xrp is already in your PATH.\n")
-		fmt.Printf("   Run 'xrp version' to confirm.\n")
+		fmt.Printf("✅ halo is already in your PATH.\n")
+		fmt.Printf("   Run 'halo version' to confirm.\n")
 		return nil
 	}
 
@@ -68,8 +68,8 @@ func installWindows(self string) error {
 		return fmt.Errorf("setx failed: %w\nOutput: %s", err, string(out))
 	}
 
-	fmt.Printf("\n✅ xrp installed successfully!\n")
-	fmt.Printf("⚡ Open a new terminal and run: xrp version\n")
+	fmt.Printf("\n✅ halo installed successfully!\n")
+	fmt.Printf("⚡ Open a new terminal and run: halo version\n")
 	fmt.Printf("   (PATH changes take effect in new terminal sessions)\n")
 	return nil
 }
@@ -81,8 +81,8 @@ func installUnix(self string) error {
 		return fmt.Errorf("could not create install directory: %w", err)
 	}
 
-	dest := filepath.Join(installDir, "xrp")
-	fmt.Printf("📦 Installing xrp to %s...\n", dest)
+	dest := filepath.Join(installDir, "halo")
+	fmt.Printf("📦 Installing halo to %s...\n", dest)
 
 	if err := copyFile(self, dest); err != nil {
 		return fmt.Errorf("could not copy binary: %w", err)
@@ -95,13 +95,13 @@ func installUnix(self string) error {
 	// Check if ~/.local/bin is already in PATH
 	currentPath := os.Getenv("PATH")
 	if strings.Contains(currentPath, installDir) {
-		fmt.Printf("\n✅ xrp installed successfully!\n")
-		fmt.Printf("   Run: xrp version\n")
+		fmt.Printf("\n✅ halo installed successfully!\n")
+		fmt.Printf("   Run: halo version\n")
 		return nil
 	}
 
 	// Print shell-specific instructions
-	fmt.Printf("\n✅ xrp installed to %s\n", dest)
+	fmt.Printf("\n✅ halo installed to %s\n", dest)
 	fmt.Printf("⚡ Add the following to your shell profile (~/.bashrc, ~/.zshrc, etc.):\n\n")
 	fmt.Printf("   export PATH=\"%s:$PATH\"\n\n", installDir)
 	fmt.Printf("   Then run: source ~/.bashrc  (or open a new terminal)\n")

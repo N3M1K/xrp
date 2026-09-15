@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"github.com/N3M1K/xrp/internal/daemon"
+	"github.com/N3M1K/halo-proxy/internal/daemon"
 	"github.com/spf13/cobra"
 )
 

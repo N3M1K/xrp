@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/N3M1K/xrp/internal/socket"
+	"github.com/N3M1K/halo-proxy/internal/socket"
 	"github.com/spf13/cobra"
 )
 
@@ -30,7 +30,7 @@ var openCmd = &cobra.Command{
 		})
 
 		if err != nil {
-			fmt.Printf("\033[31mXRP daemon is not running. Start it with 'xrp start'.\033[0m\n")
+			fmt.Printf("\033[31mHalo Proxy daemon is not running. Start it with 'halo start'.\033[0m\n")
 			return nil
 		}
 

@@ -15,10 +15,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/N3M1K/xrp/internal/config"
-	"github.com/N3M1K/xrp/internal/deps"
-	"github.com/N3M1K/xrp/internal/scanner"
-	"github.com/N3M1K/xrp/internal/ssl"
+	"github.com/N3M1K/halo-proxy/internal/config"
+	"github.com/N3M1K/halo-proxy/internal/deps"
+	"github.com/N3M1K/halo-proxy/internal/scanner"
+	"github.com/N3M1K/halo-proxy/internal/ssl"
 )
 
 // CaddyConfig represents the root of the Caddy JSON structure
@@ -93,8 +93,8 @@ type Upstream struct {
 // GenerateConfig creates a Caddy JSON configuration from a list of scanned processes.
 //
 // It builds two dedicated servers so plain HTTP and HTTPS behave correctly:
-//   - xrp_http  : redirects everything to HTTPS (308)
-//   - xrp_https : terminates TLS with the mkcert certs and reverse-proxies routes
+//   - halo_http  : redirects everything to HTTPS (308)
+//   - halo_https : terminates TLS with the mkcert certs and reverse-proxies routes
 //
 // If no certificates are available it degrades gracefully to a plain HTTP proxy.
 func GenerateConfig(processes []scanner.Process, cfg *config.Config, certPairs []ssl.CertPair) CaddyConfig {
@@ -136,11 +136,11 @@ func GenerateConfig(processes []scanner.Process, cfg *config.Config, certPairs [
 			TLSConnectionPolicies: []TLSConnectionPolicy{{}},
 			AutoHTTPS:             &AutoHTTPSConfig{Disable: true},
 		}
-		servers["xrp_https"] = httpsServer
+		servers["halo_https"] = httpsServer
 
 		// Plain HTTP simply redirects to the matching HTTPS URL.
 		if cfg.HTTPPort != cfg.HTTPSPort {
-			servers["xrp_http"] = Server{
+			servers["halo_http"] = Server{
 				Listen:    []string{fmt.Sprintf(":%d", cfg.HTTPPort)},
 				AutoHTTPS: &AutoHTTPSConfig{Disable: true},
 				Routes: []Route{{
@@ -157,7 +157,7 @@ func GenerateConfig(processes []scanner.Process, cfg *config.Config, certPairs [
 	} else {
 		// No trusted certs: serve the routes over plain HTTP so the user still
 		// gets a working proxy instead of a hard failure.
-		servers["xrp_http"] = Server{
+		servers["halo_http"] = Server{
 			Listen:    []string{fmt.Sprintf(":%d", cfg.HTTPPort)},
 			Routes:    routes,
 			AutoHTTPS: &AutoHTTPSConfig{Disable: true},
@@ -227,7 +227,7 @@ func ApplyConfig(cfg *config.Config, caddyConfig CaddyConfig) error {
 		if strings.Contains(lower, "permission denied") || strings.Contains(lower, "access is denied") {
 			bin, _ := resolveCaddyBinary()
 			if runtime.GOOS == "windows" {
-				return fmt.Errorf("caddy could not bind privileged ports (80/443). Restart xrp from an Administrator terminal.\n%s", msg)
+				return fmt.Errorf("caddy could not bind privileged ports (80/443). Restart halo from an Administrator terminal.\n%s", msg)
 			}
 			return fmt.Errorf("caddy could not bind privileged ports (80/443). Run: sudo setcap cap_net_bind_service=+ep %s\n%s", bin, msg)
 		}

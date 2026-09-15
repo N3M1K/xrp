@@ -13,18 +13,18 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/N3M1K/xrp/internal/config"
-	"github.com/N3M1K/xrp/internal/deps"
-	"github.com/N3M1K/xrp/internal/hosts"
-	"github.com/N3M1K/xrp/internal/proxy"
-	"github.com/N3M1K/xrp/internal/scanner"
-	"github.com/N3M1K/xrp/internal/socket"
-	"github.com/N3M1K/xrp/internal/ssl"
-	"github.com/N3M1K/xrp/internal/tunnel"
+	"github.com/N3M1K/halo-proxy/internal/config"
+	"github.com/N3M1K/halo-proxy/internal/deps"
+	"github.com/N3M1K/halo-proxy/internal/hosts"
+	"github.com/N3M1K/halo-proxy/internal/proxy"
+	"github.com/N3M1K/halo-proxy/internal/scanner"
+	"github.com/N3M1K/halo-proxy/internal/socket"
+	"github.com/N3M1K/halo-proxy/internal/ssl"
+	"github.com/N3M1K/halo-proxy/internal/tunnel"
 )
 
 func getPIDFilePath() string {
-	return filepath.Join(os.TempDir(), "xrp.pid")
+	return filepath.Join(os.TempDir(), "halo.pid")
 }
 
 func WritePID() error {
@@ -42,11 +42,11 @@ func getLogFilePath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	logDir := filepath.Join(cacheDir, "xrp")
+	logDir := filepath.Join(cacheDir, "halo")
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		return "", err
 	}
-	return filepath.Join(logDir, "xrp.log"), nil
+	return filepath.Join(logDir, "halo.log"), nil
 }
 
 func Run(cfg *config.Config) error {
@@ -61,7 +61,7 @@ func Run(cfg *config.Config) error {
 	defer logFile.Close()
 
 	logger := log.New(logFile, "[daemon] ", log.LstdFlags)
-	logger.Printf("Starting XRP daemon (pid %d)...", os.Getpid())
+	logger.Printf("Starting Halo Proxy daemon (pid %d)...", os.Getpid())
 	logger.Printf("HTTP port: %d, HTTPS port: %d, admin port: %d", cfg.HTTPPort, cfg.HTTPSPort, cfg.CaddyPort)
 
 	if err := WritePID(); err != nil {
@@ -78,11 +78,11 @@ func Run(cfg *config.Config) error {
 
 	// Dynamically override PATH across child exec routines
 	if cacheDir, err := os.UserCacheDir(); err == nil {
-		xrpBinDir := filepath.Join(cacheDir, "xrp", "bin")
-		os.Setenv("PATH", xrpBinDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+		haloBinDir := filepath.Join(cacheDir, "halo", "bin")
+		os.Setenv("PATH", haloBinDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	}
 
-	// Certificates: the interactive `xrp start` command handles installing the
+	// Certificates: the interactive `halo start` command handles installing the
 	// mkcert CA into the system trust store. Here we only generate the certs
 	// (which never needs elevated privileges).
 	var certPairs []ssl.CertPair
@@ -102,9 +102,9 @@ func Run(cfg *config.Config) error {
 	hostsWritable := hosts.IsWritable()
 	if !hostsWritable {
 		if runtime.GOOS == "windows" {
-			logger.Printf("WARNING: hosts file is not writable. Restart XRP from an elevated (Administrator) terminal for custom TLDs to resolve.")
+			logger.Printf("WARNING: hosts file is not writable. Restart Halo Proxy from an elevated (Administrator) terminal for custom TLDs to resolve.")
 		} else {
-			logger.Printf("WARNING: hosts file is not writable. Only .localhost domains will resolve; custom TLDs need root or a writable XRP_HOSTS_PATH.")
+			logger.Printf("WARNING: hosts file is not writable. Only .localhost domains will resolve; custom TLDs need root or a writable HALO_HOSTS_PATH.")
 		}
 	}
 
@@ -142,7 +142,7 @@ func Run(cfg *config.Config) error {
 
 	logger.Printf("Daemon running, scanning every %d seconds", cfg.PollInterval)
 
-	// Perform an immediate first scan so `xrp list` is populated right away.
+	// Perform an immediate first scan so `halo list` is populated right away.
 	tick(logger, cfg, certPairs, hostsWritable)
 
 	ticker := time.NewTicker(interval(cfg.PollInterval))

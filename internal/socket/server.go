@@ -11,8 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/N3M1K/xrp/internal/scanner"
-	"github.com/N3M1K/xrp/internal/tunnel"
+	"github.com/N3M1K/halo-proxy/internal/scanner"
+	"github.com/N3M1K/halo-proxy/internal/tunnel"
 )
 
 var (
@@ -22,7 +22,7 @@ var (
 )
 
 // SetShutdownHandler registers a callback invoked when a client sends the
-// "shutdown" command. This gives `xrp stop` a graceful, cross-platform way to
+// "shutdown" command. This gives `halo stop` a graceful, cross-platform way to
 // ask the daemon to exit (Windows has no usable SIGINT for background procs).
 func SetShutdownHandler(f func()) {
 	shutdownFunc = f

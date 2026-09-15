@@ -1,4 +1,4 @@
-module github.com/N3M1K/xrp
+module github.com/N3M1K/halo-proxy
 
 go 1.24.2
 

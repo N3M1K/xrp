@@ -8,7 +8,7 @@ import (
 
 var reloadCmd = &cobra.Command{
 	Use:   "reload",
-	Short: "Reload the XRP daemon configuration (Restart)",
+	Short: "Reload the Halo Proxy daemon configuration (Restart)",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		fmt.Println("Reloading daemon...")
 		if err := stopCmd.RunE(cmd, args); err != nil {

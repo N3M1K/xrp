@@ -8,15 +8,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/N3M1K/xrp/internal/socket"
+	"github.com/N3M1K/halo-proxy/internal/socket"
 	"github.com/spf13/cobra"
 )
 
 var stopCmd = &cobra.Command{
 	Use:   "stop",
-	Short: "Stop the background XRP daemon",
+	Short: "Stop the background Halo Proxy daemon",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		pidFile := filepath.Join(os.TempDir(), "xrp.pid")
+		pidFile := filepath.Join(os.TempDir(), "halo.pid")
 		data, err := os.ReadFile(pidFile)
 		if err != nil {
 			fmt.Println("Daemon does not appear to be running.")

@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// ipcPort is the xrp daemon IPC port and must never be proxied.
+// ipcPort is the halo daemon IPC port and must never be proxied.
 const ipcPort = 40192
 
 // systemProcesses are OS/background processes that never represent a dev server.
@@ -16,8 +16,8 @@ var systemProcesses = map[string]bool{
 	// Windows
 	"svchost": true, "lsass": true, "wininit": true, "spoolsv": true,
 	"services": true, "system": true, "smss": true, "csrss": true, "winlogon": true,
-	// xrp ecosystem (prevents recursive proxying)
-	"xrp": true, "xrp.exe": true, "xrp-daemon": true, "xrp-daemon.exe": true,
+	// halo ecosystem (prevents recursive proxying)
+	"halo": true, "halo.exe": true, "halo-daemon": true, "halo-daemon.exe": true,
 	"caddy": true, "caddy.exe": true,
 }
 

@@ -64,7 +64,7 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("could not find home directory: %w", err)
 	}
 
-	configDir := filepath.Join(homeDir, ".config", "xrp")
+	configDir := filepath.Join(homeDir, ".config", "halo")
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return nil, fmt.Errorf("could not create config directory: %w", err)
 	}

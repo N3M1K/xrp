@@ -13,7 +13,7 @@ func withHosts(t *testing.T) string {
 	if err := os.WriteFile(path, []byte("127.0.0.1 localhost\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("XRP_HOSTS_PATH", path)
+	t.Setenv("HALO_HOSTS_PATH", path)
 	return path
 }
 

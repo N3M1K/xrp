@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/N3M1K/xrp/internal/scanner"
-	"github.com/N3M1K/xrp/internal/socket"
+	"github.com/N3M1K/halo-proxy/internal/scanner"
+	"github.com/N3M1K/halo-proxy/internal/socket"
 	"github.com/spf13/cobra"
 )
 
@@ -29,7 +29,7 @@ var listCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		resp, err := socket.Send(socket.Request{Cmd: "list"})
 		if err != nil {
-			fmt.Printf("%s%sXRP daemon is not running. Start it with 'xrp start'.%s\n", Bold, Red, Reset)
+			fmt.Printf("%s%sHalo Proxy daemon is not running. Start it with 'halo start'.%s\n", Bold, Red, Reset)
 			return nil
 		}
 
@@ -84,7 +84,7 @@ func printDashboard(processes []scanner.Process) {
 	}
 
 	// Print Dashboard
-	fmt.Printf("\n%s%s 🚀 XRP Dashboard %s\n", Bold, Cyan, Reset)
+	fmt.Printf("\n%s%s 🚀 Halo Proxy Dashboard %s\n", Bold, Cyan, Reset)
 	fmt.Println(strings.Repeat("=", portWidth+pidWidth+processWidth+projectWidth+appWidth+14))
 
 	headerFormat := fmt.Sprintf("%s%%-%ds | %%-%ds | %%-%ds | %%-%ds | %%-%ds%s\n", Bold, portWidth, pidWidth, processWidth, projectWidth, appWidth, Reset)

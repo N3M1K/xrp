@@ -1,6 +1,6 @@
-# XRP — Zero-Config Local Reverse Proxy
+# Halo Proxy — Zero-Config Local Reverse Proxy
 
-> **xrp** (xxdev's Reverse Proxy) automatically discovers your running local development servers and routes them to clean `.localhost` domains with HTTPS — no config files, no manual hosts editing, no port memorizing.
+> **Halo Proxy** (command: `halo`) automatically discovers your running local development servers and routes them to clean `.localhost` domains with HTTPS — no config files, no manual hosts editing, no port memorizing.
 
 ---
 
@@ -15,24 +15,24 @@
 - 💻 **Cross-platform** — Windows, Linux, macOS
 - ⚡ **Zero restart** — TLD changes take effect within one poll cycle (5s)
 
-> **Why `.localhost`?** Anything under `.localhost` is resolved to loopback by the OS and every modern browser (RFC 6761) — no `/etc/hosts` editing and no root needed. Custom TLDs (`*.media`, `*.dev`, …) are supported too and are written to the hosts file, which needs root/Administrator (or a writable `XRP_HOSTS_PATH`).
+> **Why `.localhost`?** Anything under `.localhost` is resolved to loopback by the OS and every modern browser (RFC 6761) — no `/etc/hosts` editing and no root needed. Custom TLDs (`*.media`, `*.dev`, …) are supported too and are written to the hosts file, which needs root/Administrator (or a writable `HALO_HOSTS_PATH`).
 
 ---
 
 ## 🚀 Quick Start
 
 ```sh
-# Install xrp to PATH (no admin rights needed on Windows)
-xrp install
+# Install halo to PATH (no admin rights needed on Windows)
+halo install
 
 # Start the background daemon
-xrp start
+halo start
 
 # Open the interactive TUI dashboard
-xrp tui
+halo tui
 
 # Or list services in the terminal
-xrp list
+halo list
 ```
 
 ---
@@ -41,21 +41,21 @@ xrp list
 
 | Command | Description |
 |---|---|
-| `xrp start` | Start the XRP daemon in the background |
-| `xrp stop` | Stop the running daemon |
-| `xrp reload` | Restart the daemon (picks up config changes) |
-| `xrp status` | Check if daemon is running |
-| `xrp list` | Print all detected services and their URLs |
-| `xrp open [project]` | Open a project URL in the browser |
-| `xrp tui` | Launch the interactive TUI dashboard |
-| `xrp share [project]` | Share a service publicly via cloudflared tunnel |
-| `xrp unshare [project]` | Stop a cloudflared tunnel |
-| `xrp set-tld [project] [tld]` | Set a custom TLD for a specific project |
-| `xrp install` | Install the `xrp` binary to your user PATH |
-| `xrp version` | Print version |
-| `xrp help` | Show help |
+| `halo start` | Start the Halo Proxy daemon in the background |
+| `halo stop` | Stop the running daemon |
+| `halo reload` | Restart the daemon (picks up config changes) |
+| `halo status` | Check if daemon is running |
+| `halo list` | Print all detected services and their URLs |
+| `halo open [project]` | Open a project URL in the browser |
+| `halo tui` | Launch the interactive TUI dashboard |
+| `halo share [project]` | Share a service publicly via cloudflared tunnel |
+| `halo unshare [project]` | Stop a cloudflared tunnel |
+| `halo set-tld [project] [tld]` | Set a custom TLD for a specific project |
+| `halo install` | Install the `halo` binary to your user PATH |
+| `halo version` | Print version |
+| `halo help` | Show help |
 
-> On the **first** `xrp start`, xrp runs `mkcert -install` to trust a local CA. On Linux/macOS this is the only step that needs `sudo` (a one-time password prompt).
+> On the **first** `halo start`, halo runs `mkcert -install` to trust a local CA. On Linux/macOS this is the only step that needs `sudo` (a one-time password prompt).
 
 ---
 
@@ -75,11 +75,11 @@ xrp list
 
 ## 🏷️ Custom TLDs
 
-XRP supports per-project TLD overrides. The default TLD is `.localhost` (zero-config, no hosts edit needed). Custom TLDs are added to the hosts file, which needs root/Administrator — if the hosts file isn't writable, xrp logs a warning and only `.localhost` names resolve.
+Halo Proxy supports per-project TLD overrides. The default TLD is `.localhost` (zero-config, no hosts edit needed). Custom TLDs are added to the hosts file, which needs root/Administrator — if the hosts file isn't writable, halo logs a warning and only `.localhost` names resolve.
 
 **Via CLI:**
 ```sh
-xrp set-tld jellyfin media
+halo set-tld jellyfin media
 # → https://jellyfin.media
 ```
 
@@ -94,7 +94,7 @@ Changes take effect within the next poll cycle (~5 seconds) — the daemon autom
 - Updates the hosts file with the new hostname
 - Reloads the Caddy configuration
 
-Config is persisted to `~/.config/xrp/config.toml`:
+Config is persisted to `~/.config/halo/config.toml`:
 ```toml
 tld = ".localhost"
 
@@ -107,7 +107,7 @@ tld = ".localhost"
 
 ## ⚙️ Configuration
 
-Config file: `~/.config/xrp/config.toml`
+Config file: `~/.config/halo/config.toml`
 
 | Key | Default | Description |
 |---|---|---|
@@ -128,17 +128,17 @@ Config file: `~/.config/xrp/config.toml`
 
 ### Port Discovery
 
-xrp uses OS-native mechanisms to find listening ports:
+halo uses OS-native mechanisms to find listening ports:
 
 | OS | Method |
 |---|---|
-| **Linux** | Reads `/proc/net/tcp` (filters `0A` = LISTEN state), correlates inodes via `/proc/[pid]/fd` |
+| **Linux** | Reads `/proc/net/tcp` + `/proc/net/tcp6` (filters `0A` = LISTEN state), correlates inodes via `/proc/[pid]/fd` |
 | **macOS** | `lsof -iTCP -sTCP:LISTEN` |
 | **Windows** | `netstat -ano` + `tasklist` + `wmic` path correlation |
 
 ### Project Name Resolution
 
-For each discovered port, xrp resolves a project name by inspecting the process CWD:
+For each discovered port, halo resolves a project name by inspecting the process CWD:
 1. `package.json` → `name` field
 2. `Cargo.toml` → `[package] name`
 3. `pyproject.toml` → `[project]` or `[tool.poetry]` name
@@ -146,15 +146,15 @@ For each discovered port, xrp resolves a project name by inspecting the process 
 
 ### Noise Filtering
 
-xrp automatically excludes:
+halo automatically excludes:
 - System processes (`svchost`, `lsass`, `csrss`, etc.)
 - Ephemeral ports (49152–65535) for unknown processes
 - Common noise apps (Spotify, OneDrive, etc.)
-- xrp itself (no recursive proxy entries)
+- halo itself (no recursive proxy entries)
 
 ### Caddy Integration
 
-xrp acts as a **control plane for Caddy**. On each poll it:
+halo acts as a **control plane for Caddy**. On each poll it:
 1. Builds a Caddy JSON config with one reverse proxy route per service
 2. Runs two logical servers: plain HTTP on `http_port` (308-redirects to HTTPS) and a TLS server on `https_port` that terminates with the local mkcert certs
 3. Posts the config to the Caddy admin API (hot-reload, zero downtime)
@@ -164,7 +164,7 @@ The reverse-proxy upstream uses the exact loopback address the service was disco
 
 ### Dependency Management
 
-On first start, xrp automatically downloads and caches required binaries to `~/.cache/xrp/bin/`:
+On first start, halo automatically downloads and caches required binaries to `~/.cache/halo/bin/`:
 
 | Binary | Version | Purpose |
 |---|---|---|
@@ -172,7 +172,7 @@ On first start, xrp automatically downloads and caches required binaries to `~/.
 | `mkcert` | 1.4.4 | Local CA + certificate generation |
 | `cloudflared` | 2024.12.0 | Public tunnel sharing |
 
-Downloads are concurrent, context-aware (5-minute timeout), and validated for integrity.
+Downloads are concurrent, context-aware (5-minute timeout), and checksum-verified when a release provides hashes.
 
 ---
 
@@ -181,7 +181,7 @@ Downloads are concurrent, context-aware (5-minute timeout), and validated for in
 Share any local service publicly with a single command:
 
 ```sh
-xrp share jellyfin
+halo share jellyfin
 # → https://random-name.trycloudflare.com
 ```
 
@@ -191,7 +191,7 @@ Active tunnels are shown in the TUI `STATUS / TUNNEL` column.
 
 Stop a tunnel:
 ```sh
-xrp unshare jellyfin
+halo unshare jellyfin
 ```
 
 ---
@@ -199,7 +199,7 @@ xrp unshare jellyfin
 ## 🛠️ IPC Architecture
 
 The daemon exposes a TCP IPC server on `127.0.0.1:40192` (JSON-RPC protocol). This powers:
-- CLI commands (`xrp list`, `xrp share`, etc.)
+- CLI commands (`halo list`, `halo share`, etc.)
 - TUI live updates
 - VS Code extension
 - _(upcoming)_ Tauri desktop GUI
@@ -224,8 +224,8 @@ The bundled VS Code extension (`vscode-extension/`) shows active services in the
 ## 🏗️ Architecture
 
 ```
-xrp (cli)
-├── cmd/xrp/cli/        — Cobra commands (start, stop, list, tui, share, set-tld, install...)
+halo (cli)
+├── cmd/halo/cli/        — Cobra commands (start, stop, list, tui, share, set-tld, install...)
 ├── internal/
 │   ├── daemon/         — Background process orchestrator
 │   ├── scanner/        — OS-specific port & process discovery
@@ -244,4 +244,4 @@ xrp (cli)
 
 ## 📄 License
 
-MIT
+GPL-3.0-or-later (see [LICENSE](LICENSE)).

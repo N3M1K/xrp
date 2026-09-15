@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/N3M1K/xrp/internal/scanner"
-	"github.com/N3M1K/xrp/internal/socket"
+	"github.com/N3M1K/halo-proxy/internal/scanner"
+	"github.com/N3M1K/halo-proxy/internal/socket"
 	"github.com/atotto/clipboard"
 	"github.com/spf13/cobra"
 )

@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	"github.com/N3M1K/xrp/internal/socket"
+	"github.com/N3M1K/halo-proxy/internal/socket"
 	"github.com/spf13/cobra"
 )
 

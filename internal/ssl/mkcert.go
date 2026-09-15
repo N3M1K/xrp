@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/N3M1K/xrp/internal/config"
+	"github.com/N3M1K/halo-proxy/internal/config"
 )
 
 func CheckMkcert() error {
@@ -48,7 +48,7 @@ func getCertsDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	certsDir := filepath.Join(cacheDir, "xrp", "certs")
+	certsDir := filepath.Join(cacheDir, "halo", "certs")
 	if err := os.MkdirAll(certsDir, 0755); err != nil {
 		return "", err
 	}

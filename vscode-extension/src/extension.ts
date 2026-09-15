@@ -1,21 +1,21 @@
 import * as vscode from 'vscode';
-import { XrpProvider, XrpTreeItem } from './XrpProvider';
+import { HaloProvider, HaloTreeItem } from './HaloProvider';
 import { fetchProcesses, sendCommand } from './socket';
 
 let statusBarItem: vscode.StatusBarItem;
 let refreshInterval: NodeJS.Timeout;
 
 export function activate(context: vscode.ExtensionContext) {
-  const xrpProvider = new XrpProvider();
+  const haloProvider = new HaloProvider();
   
-  vscode.window.registerTreeDataProvider('xrp-services', xrpProvider);
+  vscode.window.registerTreeDataProvider('halo-services', haloProvider);
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('xrp.refresh', () => {
-      xrpProvider.refresh();
+    vscode.commands.registerCommand('halo.refresh', () => {
+      haloProvider.refresh();
       updateStatusBar();
     }),
-    vscode.commands.registerCommand('xrp.open', async (item: XrpTreeItem) => {
+    vscode.commands.registerCommand('halo.open', async (item: HaloTreeItem) => {
       if (item && item.url) {
         try {
           // Tell daemon to open it via RPC
@@ -35,7 +35,7 @@ export function activate(context: vscode.ExtensionContext) {
   updateStatusBar();
   
   refreshInterval = setInterval(() => {
-    xrpProvider.refresh();
+    haloProvider.refresh();
     updateStatusBar();
   }, 5000);
 }
@@ -43,7 +43,7 @@ export function activate(context: vscode.ExtensionContext) {
 async function updateStatusBar() {
   const processes = await fetchProcesses();
   if (processes.length > 0) {
-    statusBarItem.text = `$(globe) XRP: ${processes.length}`;
+    statusBarItem.text = `$(globe) Halo: ${processes.length}`;
     statusBarItem.tooltip = "Local proxy domains are active";
     statusBarItem.show();
   } else {

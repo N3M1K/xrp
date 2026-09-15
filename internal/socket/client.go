@@ -20,7 +20,7 @@ func SendWithTimeout(req Request, timeout time.Duration) (*Response, error) {
 	addr := GetSocketPath()
 	conn, err := net.DialTimeout("tcp", addr, timeout)
 	if err != nil {
-		return nil, fmt.Errorf("xrp daemon is not running")
+		return nil, fmt.Errorf("halo daemon is not running")
 	}
 	defer conn.Close()
 

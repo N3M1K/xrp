@@ -3,9 +3,9 @@ package proxy
 import (
 	"testing"
 
-	"github.com/N3M1K/xrp/internal/config"
-	"github.com/N3M1K/xrp/internal/scanner"
-	"github.com/N3M1K/xrp/internal/ssl"
+	"github.com/N3M1K/halo-proxy/internal/config"
+	"github.com/N3M1K/halo-proxy/internal/scanner"
+	"github.com/N3M1K/halo-proxy/internal/ssl"
 )
 
 func testCfg() *config.Config {
@@ -32,9 +32,9 @@ func TestGenerateConfigWithCerts(t *testing.T) {
 		t.Fatalf("admin listen = %+v, want 127.0.0.1:2019", c.Admin)
 	}
 
-	https, ok := c.Apps.HTTP.Servers["xrp_https"]
+	https, ok := c.Apps.HTTP.Servers["halo_https"]
 	if !ok {
-		t.Fatal("missing xrp_https server")
+		t.Fatal("missing halo_https server")
 	}
 	if len(https.TLSConnectionPolicies) != 1 {
 		t.Error("expected one TLS connection policy")
@@ -54,9 +54,9 @@ func TestGenerateConfigWithCerts(t *testing.T) {
 		t.Errorf("jelly dial = %q", dials["jelly.localhost"])
 	}
 
-	httpSrv, ok := c.Apps.HTTP.Servers["xrp_http"]
+	httpSrv, ok := c.Apps.HTTP.Servers["halo_http"]
 	if !ok {
-		t.Fatal("missing xrp_http server")
+		t.Fatal("missing halo_http server")
 	}
 	if len(httpSrv.Routes) != 1 {
 		t.Fatalf("expected 1 redirect route, got %d", len(httpSrv.Routes))
@@ -76,7 +76,7 @@ func TestGenerateConfigCustomTLD(t *testing.T) {
 	procs := []scanner.Process{{Port: 8096, ProjectName: "jelly", Addr: "127.0.0.1"}}
 
 	c := GenerateConfig(procs, cfg, []ssl.CertPair{{Cert: "c", Key: "k"}})
-	https := c.Apps.HTTP.Servers["xrp_https"]
+	https := c.Apps.HTTP.Servers["halo_https"]
 	if host := https.Routes[0].Match[0].Host[0]; host != "jelly.media" {
 		t.Errorf("host = %q, want jelly.media", host)
 	}
@@ -89,7 +89,7 @@ func TestGenerateConfigDedupesHosts(t *testing.T) {
 		{Port: 3001, ProjectName: "myapp", Addr: "127.0.0.1"},
 	}
 	c := GenerateConfig(procs, cfg, []ssl.CertPair{{Cert: "c", Key: "k"}})
-	https := c.Apps.HTTP.Servers["xrp_https"]
+	https := c.Apps.HTTP.Servers["halo_https"]
 	if len(https.Routes) != 1 {
 		t.Fatalf("expected duplicate hosts to collapse to 1 route, got %d", len(https.Routes))
 	}
@@ -104,12 +104,12 @@ func TestGenerateConfigWithoutCertsServesHTTP(t *testing.T) {
 
 	c := GenerateConfig(procs, cfg, nil)
 
-	if _, ok := c.Apps.HTTP.Servers["xrp_https"]; ok {
+	if _, ok := c.Apps.HTTP.Servers["halo_https"]; ok {
 		t.Error("https server should not exist without certs")
 	}
-	httpSrv, ok := c.Apps.HTTP.Servers["xrp_http"]
+	httpSrv, ok := c.Apps.HTTP.Servers["halo_http"]
 	if !ok {
-		t.Fatal("missing xrp_http server")
+		t.Fatal("missing halo_http server")
 	}
 	if len(httpSrv.Routes) != 1 || httpSrv.Routes[0].Handle[0].Handler != "reverse_proxy" {
 		t.Error("expected plain HTTP reverse_proxy routes without certs")
